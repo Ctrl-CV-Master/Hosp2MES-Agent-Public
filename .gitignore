@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+*.db
+mes_demo.db
+smoke_tmp.db
+
+# Node / frontend
+node_modules/
+dist/
+frontend/dist/
+frontend/node_modules/
+.vite/
+*.tsbuildinfo
+
+# Environment / secrets — NEVER commit
+.env
+.env.local
+*.local
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Agent run artifacts (optional, large)
+benchmark/results/*.json
+assets/demo/*.gif
+
+# Temporary probe / response dumps
+backend/launch*.json
+backend/resp_*.json
+frontend/vite.config.d.ts
+frontend/vite.config.js

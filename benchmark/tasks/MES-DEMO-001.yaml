@@ -1,0 +1,14 @@
+# Benchmark Task 01 - Material Creation
+# All data is synthetic demonstration data.
+task_id: MES-DEMO-001
+instruction: 创建一个新的 DEMO 产品物料，并确认物料主文件保存成功。
+goal: Create a new DEMO product material and confirm it is saved in the master file.
+product: DEMO-KCL-SOLUTION
+target_material_code: MAT-DEMO-KCL
+target_material_name: DEMO氯化钾模拟物料
+material_type: raw
+unit: kg
+specification: synthetic demo material (KCL solution)
+expected_final_state:
+  material_exists: true
+max_steps: 30

@@ -1,0 +1,11 @@
+
+=== MES-DEMO-001 ===
+success: True | steps: 6 | recovery: 0 | subgoal_rate: 1.0 | verifier_passed: True
+
+=== MES-DEMO-002 ===
+success: True | steps: 10 | recovery: 0 | subgoal_rate: 1.0 | verifier_passed: True
+
+=== MES-DEMO-003 ===
+success: True | steps: 34 | recovery: 1 | subgoal_rate: 1.0 | verifier_passed: True
+
+ALL TASKS PASSED

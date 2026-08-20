@@ -1,0 +1,23 @@
+:root {
+  --h2m-bg: #f5f7fa;
+  --h2m-sidebar: #1f2d3d;
+  --h2m-sidebar-active: #409eff;
+}
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; margin: 0; }
+body {
+  font-family: "Inter", "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--h2m-bg);
+  color: #303133;
+}
+.h2m-card { margin-bottom: 16px; }
+.h2m-page-title { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+.h2m-page-sub { color: #909399; font-size: 13px; margin: 0 0 16px; }
+.h2m-status-running { color: #e6a23c; font-weight: 600; }
+.h2m-status-done { color: #67c23a; font-weight: 600; }
+.h2m-status-fail { color: #f56c6c; font-weight: 600; }
+.code-block {
+  background: #0d1117; color: #c9d1d9; padding: 12px 14px;
+  border-radius: 6px; font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px; white-space: pre-wrap; word-break: break-all; max-height: 420px; overflow: auto;
+}

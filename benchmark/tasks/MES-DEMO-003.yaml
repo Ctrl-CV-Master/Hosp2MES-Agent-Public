@@ -1,0 +1,38 @@
+# Benchmark Task 03 (HERO) - Full long-horizon production workflow
+# All data is synthetic demonstration data.
+task_id: MES-DEMO-003
+instruction: >-
+  创建目标产品，建立 BOM，创建生产指令，完成
+  称量 → 溶解 → 过滤 → 分装 → 贴签 → 包装 → 入库，
+  最后验证产品生产状态。
+goal: Complete the full DEMO-KCL-SOLUTION production workflow end-to-end.
+product: DEMO-KCL-SOLUTION
+target_material_code: MAT-DEMO-KCL
+target_material_name: DEMO氯化钾模拟物料
+material_type: raw
+unit: kg
+specification: synthetic demo material (KCL solution)
+bom_code: BOM-DEMO-KCL-001
+bom_materials:
+  - material_code: MAT-DEMO-KCL
+    quantity: 1.5
+  - material_code: MAT-WATER
+    quantity: 100.0
+  - material_code: MAT-PACK
+    quantity: 100.0
+order_code: ORD-DEMO-003
+batch: B2026DEMO003
+quantity: 60
+expected_final_state:
+  material_exists: true
+  bom_exists: true
+  production_order_status: COMPLETED
+  storage_status: STORED
+max_steps: 100
+# The Hero task demonstrates local recovery: a BOM save-failure is injected and
+# the agent must detect it, clear the fault and repair the affected subgoal
+# (not restart the whole task).
+inject_anomaly:
+  type: save_failure
+  target: bom
+  message: simulated BOM save failure for recovery demo

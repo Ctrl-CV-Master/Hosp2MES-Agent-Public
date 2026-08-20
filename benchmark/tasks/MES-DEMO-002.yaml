@@ -1,0 +1,24 @@
+# Benchmark Task 02 - BOM + Production Order
+# All data is synthetic demonstration data.
+task_id: MES-DEMO-002
+instruction: 查询目标产品，创建 BOM，配置物料，创建生产指令，并确认生产指令成功建立。
+goal: Create a BOM for the target product, configure its materials, create a production order and confirm the order exists.
+product: DEMO-GLUCOSE-SOLUTION
+target_material_code: MAT-GLU
+target_material_name: DEMO葡萄糖模拟物料
+material_type: raw
+unit: kg
+specification: synthetic demo material (glucose solution)
+bom_code: BOM-DEMO-GLU-001
+bom_materials:
+  - material_code: MAT-GLU
+    quantity: 5.0
+  - material_code: MAT-WATER
+    quantity: 100.0
+order_code: ORD-DEMO-002
+batch: B2026DEMO002
+quantity: 80
+expected_final_state:
+  bom_exists: true
+  production_order_status: NOT_STARTED
+max_steps: 50
