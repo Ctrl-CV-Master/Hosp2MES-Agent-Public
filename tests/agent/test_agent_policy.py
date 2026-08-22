@@ -39,9 +39,10 @@ def test_policy_emits_single_action():
         "recent_actions": [],
     }
     d1 = policy.next_action(context)
-    # A single action dict, never a list.
-    assert isinstance(d1, dict)
-    assert d1["action"] == "click"
+    # A single action decision, never a list.
+    from hosp2mes.agents.hosp2mes_agent import PolicyDecision
+    assert isinstance(d1, PolicyDecision)
+    assert d1.action == "click"
 
     # Next call, with the dialog open, produces the next single action.
     context["interactive_elements"] = [
@@ -53,9 +54,9 @@ def test_policy_emits_single_action():
                                   "target": {"role": "button", "name": "新建物料"},
                                   "result": "ok"}]
     d2 = policy.next_action(context)
-    assert isinstance(d2, dict)
-    assert d2["action"] == "type"
-    assert d2["target"] == {"role": "textbox", "name": "物料编码"}
+    assert isinstance(d2, PolicyDecision)
+    assert d2.action == "type"
+    assert d2.target == {"role": "textbox", "name": "物料编码"}
 
 
 # ---- 2. autonomy: a variant page (reordered, distractors) -----------------
@@ -110,15 +111,15 @@ def _drive(env, policy, cap, open_button_name, page_path):
             "interactive_elements": obs.interactive_elements,
             "recent_actions": recent,
         }
-        d = policy.next_action(context) or {"action": "done"}
-        if d.get("action") == "done":
+        d = policy.next_action(context)
+        if d is None or d.action == "done":
             break
-        action = Action(verb=d["action"], target=d.get("target"),
-                        value=d.get("value"), params=d.get("params", {}),
-                        reasoning=d.get("rationale", ""))
+        action = Action(verb=d.action, target=d.target,
+                        value=d.value, params=d.params,
+                        reasoning=d.rationale)
         res = env.execute(action)
-        recent.append({"action": d.get("action"), "target": d.get("target"),
-                       "value": d.get("value"), "result": "ok" if res.ok else f"fail:{res.detail}"})
+        recent.append({"action": d.action, "target": d.target,
+                       "value": d.value, "result": "ok" if res.ok else f"fail:{res.detail}"})
         if len(recent) > 12:
             recent = recent[-12:]
         if env._page.evaluate("() => !!window.__saved"):
