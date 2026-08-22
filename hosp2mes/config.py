@@ -15,6 +15,9 @@ class Config:
     llm_provider: str = "mock"    # "mock" | "deepseek"
     publish_url: str = ""         # optional backend URL to stream traces to
     max_steps: int = 100
+    frontend_url: str = "http://localhost:5173"   # Vue Mock MES base URL
+    headless: bool = True                         # browser mode: headless Chromium
+    artifacts_root: str = ""                      # evidence output root (artifacts/)
 
     @classmethod
     def load(cls) -> "Config":
@@ -27,6 +30,9 @@ class Config:
             llm_provider=os.getenv("AGENT_LLM_PROVIDER", "mock"),
             publish_url=os.getenv("AGENT_PUBLISH_URL", ""),
             max_steps=int(os.getenv("AGENT_MAX_STEPS", "100")),
+            frontend_url=os.getenv("FRONTEND_URL", "http://localhost:5173"),
+            headless=os.getenv("BROWSER_HEADLESS", "1") == "1",
+            artifacts_root=os.getenv("AGENT_ARTIFACTS_ROOT", ""),
         )
 
     def use_real_llm(self) -> bool:
