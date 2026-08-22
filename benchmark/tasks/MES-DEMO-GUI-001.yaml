@@ -1,0 +1,19 @@
+# Benchmark Task GUI-01 - Material creation through the real browser GUI
+# All data is synthetic demonstration data.
+#
+# This task is the *GUI* counterpart of MES-DEMO-001. The agent MUST create the
+# material by driving the Vue Mock MES through Playwright (click / type / select
+# / save). The final verification is performed independently via a read-only
+# REST read-back, never by trusting the GUI's own rendering.
+task_id: MES-DEMO-GUI-001
+instruction: 通过浏览器 GUI 在物品主文件新建一个 DEMO 物料，并确认保存成功。
+goal: Create a new DEMO material through the browser GUI and confirm it is saved.
+product: DEMO-GUI-MATERIAL
+target_material_code: MAT-GUI-001
+target_material_name: GUI演示物料
+material_type: raw
+unit: kg
+specification: synthetic demo material created via browser GUI
+expected_final_state:
+  material_exists: true
+max_steps: 40
