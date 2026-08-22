@@ -8,14 +8,17 @@ through an *environment* that exposes:
   - ``system_state(...)`` -> the business state used by the Evidence Verifier
 
 Two concrete environments are provided:
-  * ``ApiEnv``   - drives the live Mock MES over its REST API (default, fully
-                  runnable and testable without a browser).
-  * ``BrowserEnv`` - a Playwright-backed environment (documented extension point;
-                  not required for the public demo to run).
+  * ``ApiEnv``     - drives the live Mock MES over its REST API. This is the
+                     deterministic test / CI backend (fully runnable without a
+                     browser). See also: read-only mode for independent state
+                     read-back in GUI runs.
+  * ``BrowserEnv`` - a real Playwright-backed GUI environment that opens the
+                     Vue Mock MES and performs business operations through the
+                     browser. Defined in ``hosp2mes/observation/browser_env.py``.
 
-This mirrors the Observation/Action abstraction used by projects such as
-BrowserGym, but targets a REST MES instead of a raw DOM. The architecture keeps
-a clean seam so a browser/DOM observation backend can be dropped in later.
+``ApiEnv(read_only=True)`` forbids any POST so it can be handed to the Evidence
+Verifier as an *independent* read-back client in browser runs — proving that a
+business state change was caused by GUI interaction, not by a direct REST call.
 """
 from __future__ import annotations
 
@@ -37,7 +40,7 @@ class Observation:
 class ActionResult:
     ok: bool
     action: str = ""
-    observation: Observation | None = None
+    observation: Any = None
     detail: str = ""
     http_status: int | None = None
     recoverable: bool = False     # True when failure is due to an injected anomaly
@@ -47,9 +50,11 @@ class ActionResult:
 class ApiEnv:
     """Live Mock MES environment driven through its REST API."""
 
-    def __init__(self, base_url: str = "http://localhost:8000", client: httpx.Client | None = None):
+    def __init__(self, base_url: str = "http://localhost:8000",
+                 client: httpx.Client | None = None, read_only: bool = False):
         self.base_url = base_url.rstrip("/")
         self._client = client
+        self.read_only = read_only
         self.current_page = "dashboard"
 
     # ---- low level -------------------------------------------------------
@@ -65,6 +70,11 @@ class ApiEnv:
         return r.json()
 
     def _post(self, path: str, json: dict) -> httpx.Response:
+        if self.read_only:
+            raise RuntimeError(
+                "read-only ApiEnv cannot POST; this client is reserved for "
+                "independent verification and must never perform actions"
+            )
         return self.client.post(path, json=json)
 
     # ---- observation -----------------------------------------------------
@@ -239,21 +249,3 @@ class ApiEnv:
 
     def reset(self) -> None:
         self.current_page = "dashboard"
-
-
-class BrowserEnv:
-    """Playwright-backed environment (extension point).
-
-    The public demo targets the REST ``ApiEnv`` so it runs without a browser.
-    This class documents where a DOM/screenshot observation backend would plug
-    in: implement ``observe`` to return a screenshot+DOM observation and
-    implement the GUI action verbs with Playwright. The agent loop, planner,
-    memory, verifier and recovery are environment-agnostic and work unchanged.
-    """
-
-    def __init__(self, base_url: str = "http://localhost:5173"):
-        self.base_url = base_url
-        raise NotImplementedError(
-            "BrowserEnv is a documented extension point. The public demo uses "
-            "ApiEnv (REST). Implement observe()/GUI actions with Playwright here."
-        )
