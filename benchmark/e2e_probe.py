@@ -19,8 +19,11 @@ import tempfile
 import threading
 import time
 
-sys.path.insert(0, r"D:/Hosp2MES-Agent-Public/backend")
-sys.path.insert(0, r"D:/Hosp2MES-Agent-Public")
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BACKEND = os.path.join(ROOT, "backend")
+for p in (BACKEND, ROOT):
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
 import httpx
 import uvicorn
@@ -33,7 +36,6 @@ from hosp2mes.config import Config
 from hosp2mes.agent.agent import Agent, TaskLoader
 from hosp2mes.observation.api_env import ApiEnv
 
-ROOT = r"D:/Hosp2MES-Agent-Public"
 TASKS = ["MES-DEMO-001", "MES-DEMO-002", "MES-DEMO-003"]
 
 

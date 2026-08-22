@@ -34,9 +34,13 @@ Thumbs.db
 # Agent run artifacts (optional, large)
 benchmark/results/*.json
 assets/demo/*.gif
+artifacts/
+playwright-report/
+test-results/
 
 # Temporary probe / response dumps
 backend/launch*.json
 backend/resp_*.json
 frontend/vite.config.d.ts
 frontend/vite.config.js
+frontend/vite.config.ts.timestamp-*.mjs

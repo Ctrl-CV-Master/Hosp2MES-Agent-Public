@@ -25,7 +25,7 @@ import uvicorn  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 import app.database as dbmod  # noqa: E402
-from app.database import SessionLocal, configure_engine, init_db  # noqa: E402
+from app.database import configure_engine, init_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.seed import seed  # noqa: E402
 
@@ -48,7 +48,7 @@ def client():
     """FastAPI TestClient backed by a fresh, seeded database."""
     configure_engine(_fresh_db())
     init_db()
-    db = SessionLocal()
+    db = dbmod.SessionLocal()  # live module attribute (post-configure_engine)
     try:
         seed(db)
     finally:
@@ -68,7 +68,7 @@ def live_server():
     port = _free_port()
     configure_engine(_fresh_db())
     init_db()
-    db = SessionLocal()
+    db = dbmod.SessionLocal()  # live module attribute (post-configure_engine)
     try:
         seed(db)
     finally:
@@ -92,3 +92,23 @@ def live_server():
     assert ok, "live backend did not start"
     yield base
     server.should_exit = True
+
+
+# ---- browser (Playwright) fixtures ----------------------------------------
+@pytest.fixture(scope="session")
+def playwright_browser():
+    """A single shared headless Chromium for browser-mode tests."""
+    sync_playwright = pytest.importorskip("playwright.sync_api").sync_playwright
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        yield browser
+        browser.close()
+
+
+@pytest.fixture
+def browser_page(playwright_browser):
+    """A fresh page (own context) for browser unit tests."""
+    ctx = playwright_browser.new_context()
+    page = ctx.new_page()
+    yield page
+    ctx.close()
