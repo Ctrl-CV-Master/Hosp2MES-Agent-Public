@@ -6,7 +6,7 @@
     <el-card class="h2m-card" shadow="never">
       <el-form :inline="true" @submit.prevent>
         <el-form-item label="选择指令">
-          <el-select v-model="selected" filterable placeholder="选择生产指令" @change="loadStages" style="width: 320px">
+          <el-select v-model="selected" filterable placeholder="选择生产指令" aria-label="选择指令" @change="loadStages" style="width: 320px">
             <el-option v-for="o in orders" :key="o.id" :label="`${o.order_code} · ${o.product}`" :value="o.id" />
           </el-select>
         </el-form-item>

@@ -6,7 +6,7 @@
     <el-card class="h2m-card" shadow="never">
       <el-form :inline="true" @submit.prevent>
         <el-form-item label="产品">
-          <el-input v-model="product" placeholder="按产品筛选" clearable @keyup.enter="load" />
+          <el-input v-model="product" placeholder="按产品筛选" aria-label="按产品筛选" clearable @keyup.enter="load" />
         </el-form-item>
         <el-button type="primary" @click="load">查询</el-button>
         <el-button type="success" @click="openCreate">新建 BOM</el-button>
@@ -30,13 +30,13 @@
       </el-table>
     </el-card>
 
-    <el-dialog v-model="dialog" title="新建 BOM" width="460px">
+    <el-dialog v-model="dialog" title="新建 BOM" width="460px" aria-label="新建 BOM 对话框">
       <el-form :model="form" label-width="90px">
-        <el-form-item label="BOM 编码"><el-input v-model="form.bom_code" /></el-form-item>
-        <el-form-item label="产品"><el-input v-model="form.product" /></el-form-item>
-        <el-form-item label="版本"><el-input v-model="form.version" /></el-form-item>
+        <el-form-item label="BOM 编码"><el-input v-model="form.bom_code" aria-label="BOM 编码" /></el-form-item>
+        <el-form-item label="产品"><el-input v-model="form.product" aria-label="产品" /></el-form-item>
+        <el-form-item label="版本"><el-input v-model="form.version" aria-label="版本" /></el-form-item>
         <el-form-item label="工艺路线">
-          <el-input v-model="form.route" placeholder="weighing>dissolution>...>storage" />
+          <el-input v-model="form.route" aria-label="工艺路线" placeholder="weighing>dissolution>...>storage" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -45,7 +45,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="itemsDialog" title="BOM 物料明细" width="560px">
+    <el-dialog v-model="itemsDialog" title="BOM 物料明细" width="560px" aria-label="BOM 物料明细对话框">
       <div v-if="current">
         <el-tag>{{ current.bom_code }} · {{ current.product }}</el-tag>
         <el-divider />
@@ -60,8 +60,8 @@
         </el-table>
         <el-divider />
         <el-form :inline="true" @submit.prevent>
-          <el-form-item label="物料编码"><el-input v-model="newItem.material_code" /></el-form-item>
-          <el-form-item label="数量"><el-input-number v-model="newItem.quantity" :min="0" /></el-form-item>
+          <el-form-item label="物料编码"><el-input v-model="newItem.material_code" aria-label="物料编码" /></el-form-item>
+          <el-form-item label="数量"><el-input-number v-model="newItem.quantity" aria-label="数量" :min="0" /></el-form-item>
           <el-button type="primary" @click="addItem">添加</el-button>
         </el-form>
       </div>

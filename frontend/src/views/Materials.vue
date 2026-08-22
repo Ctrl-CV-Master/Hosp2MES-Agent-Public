@@ -6,7 +6,7 @@
     <el-card class="h2m-card" shadow="never">
       <el-form :inline="true" @submit.prevent>
         <el-form-item label="搜索">
-          <el-input v-model="q" placeholder="物料编码 / 名称" clearable @keyup.enter="load" />
+          <el-input v-model="q" placeholder="物料编码 / 名称" aria-label="搜索物料" clearable @keyup.enter="load" />
         </el-form-item>
         <el-button type="primary" @click="load">查询</el-button>
         <el-button @click="openCreate">新建物料</el-button>
@@ -30,14 +30,14 @@
       </el-table>
     </el-card>
 
-    <el-dialog v-model="dialog" :title="editing ? '编辑物料' : '新建物料'" width="460px">
+    <el-dialog v-model="dialog" :title="editing ? '编辑物料' : '新建物料'" width="460px" aria-label="物料编辑对话框">
       <el-form :model="form" label-width="90px">
-        <el-form-item label="物料编码"><el-input v-model="form.material_code" :disabled="editing" /></el-form-item>
-        <el-form-item label="物料名称"><el-input v-model="form.material_name" /></el-form-item>
-        <el-form-item label="类型"><el-select v-model="form.material_type"><el-option v-for="t in types" :key="t" :label="t" :value="t" /></el-select></el-form-item>
-        <el-form-item label="单位"><el-input v-model="form.unit" /></el-form-item>
-        <el-form-item label="规格"><el-input v-model="form.specification" /></el-form-item>
-        <el-form-item label="状态"><el-select v-model="form.status"><el-option label="ACTIVE" value="ACTIVE" /><el-option label="INACTIVE" value="INACTIVE" /></el-select></el-form-item>
+        <el-form-item label="物料编码"><el-input v-model="form.material_code" aria-label="物料编码" :disabled="editing" /></el-form-item>
+        <el-form-item label="物料名称"><el-input v-model="form.material_name" aria-label="物料名称" /></el-form-item>
+        <el-form-item label="类型"><el-select v-model="form.material_type" aria-label="类型"><el-option v-for="t in types" :key="t" :label="t" :value="t" /></el-select></el-form-item>
+        <el-form-item label="单位"><el-input v-model="form.unit" aria-label="单位" /></el-form-item>
+        <el-form-item label="规格"><el-input v-model="form.specification" aria-label="规格" /></el-form-item>
+        <el-form-item label="状态"><el-select v-model="form.status" aria-label="状态"><el-option label="ACTIVE" value="ACTIVE" /><el-option label="INACTIVE" value="INACTIVE" /></el-select></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialog = false">取消</el-button>

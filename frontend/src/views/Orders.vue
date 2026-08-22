@@ -6,7 +6,7 @@
     <el-card class="h2m-card" shadow="never">
       <el-form :inline="true" @submit.prevent>
         <el-form-item label="产品">
-          <el-input v-model="product" placeholder="按产品筛选" clearable @keyup.enter="load" />
+          <el-input v-model="product" placeholder="按产品筛选" aria-label="按产品筛选" clearable @keyup.enter="load" />
         </el-form-item>
         <el-button type="primary" @click="load">查询</el-button>
         <el-button type="success" @click="openCreate">新建指令</el-button>
@@ -28,12 +28,12 @@
       </el-table>
     </el-card>
 
-    <el-dialog v-model="dialog" title="新建生产指令" width="460px">
+    <el-dialog v-model="dialog" title="新建生产指令" width="460px" aria-label="新建生产指令对话框">
       <el-form :model="form" label-width="90px">
-        <el-form-item label="指令号"><el-input v-model="form.order_code" /></el-form-item>
-        <el-form-item label="产品"><el-input v-model="form.product" /></el-form-item>
-        <el-form-item label="批次"><el-input v-model="form.batch" /></el-form-item>
-        <el-form-item label="数量"><el-input-number v-model="form.quantity" :min="1" /></el-form-item>
+        <el-form-item label="指令号"><el-input v-model="form.order_code" aria-label="指令号" /></el-form-item>
+        <el-form-item label="产品"><el-input v-model="form.product" aria-label="产品" /></el-form-item>
+        <el-form-item label="批次"><el-input v-model="form.batch" aria-label="批次" /></el-form-item>
+        <el-form-item label="数量"><el-input-number v-model="form.quantity" aria-label="数量" :min="1" /></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialog = false">取消</el-button>
