@@ -3,8 +3,10 @@
 Usage:
     # deterministic test / CI backend (default)
     python -m hosp2mes.run --task MES-DEMO-001 --env api
-    # real browser GUI execution
+    # real browser GUI execution — deterministic skill baseline
     python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --headless false
+    # real browser GUI execution — one-action-per-step policy agent
+    python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --agent hosp2mes
 """
 from __future__ import annotations
 
@@ -47,6 +49,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--env", default="api", choices=["api", "browser"],
                         help="execution environment: api (REST, deterministic) or "
                              "browser (real GUI via Playwright)")
+    parser.add_argument("--agent", default="skill", choices=["skill", "hosp2mes", "s3"],
+                        help="browser-mode agent: skill (deterministic baseline), "
+                             "hosp2mes (one-action-per-step policy), s3 (Agent S3)")
     parser.add_argument("--headless", default=None, metavar="true|false",
                         help="browser mode only: run Chromium headless (default true)")
     args = parser.parse_args(argv)
@@ -87,7 +92,27 @@ def main(argv: list[str] | None = None) -> int:
             headless=config.headless,
             artifacts_dir=None,  # screenshots land in EvidenceWriter's run dir
         )
-        agent = BrowserAgent(config, env, task)
+        if args.agent == "hosp2mes":
+            from hosp2mes.agents.hosp2mes_agent import Hosp2MESAgent
+
+            agent = Hosp2MESAgent(config, env, task)
+        elif args.agent == "s3":
+            from hosp2mes.agents.agent_s3_adapter import AgentS3Adapter
+
+            adapter = AgentS3Adapter(config)
+            # Agent S3 runs on its own OS-level loop; here we surface the
+            # adapter explicitly rather than driving our BrowserEnv loop.
+            print("[s3] Agent S3 adapter selected. It requires gui-agents + an "
+                  "LLM API key + a UI-TARS grounding model endpoint to actually "
+                  "predict actions. See hosp2mes/agents/agent_s3_adapter.py.")
+            if not adapter.is_installed():
+                print("[s3] gui-agents is not installed; cannot run Agent S3.", file=sys.stderr)
+                return 4
+            print("[s3] gui-agents is installed, but a real run still needs "
+                  "worker_engine_params + grounding_engine_params.")
+            return 4
+        else:
+            agent = BrowserAgent(config, env, task)
     else:
         env = ApiEnv(base_url=config.backend_base_url)
         agent = Agent(config, env, task)

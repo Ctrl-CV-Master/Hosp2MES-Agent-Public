@@ -257,31 +257,34 @@ class BrowserExecutor:
                                           scope_hint=f"{within.get('role', 'row')} '{within.get('text') or within.get('name') or ''}'")
 
         dialog = _topmost_dialog(page)
-        exact = bool(params.get("exact", False))
+        exact_only = bool(params.get("exact", False))
 
         if dialog is not None:
             # If a dialog is open, resolve strictly inside it — don't fall
             # through to duplicate-labelled controls in the page underneath.
             return self._resolve_in_scope(dialog, role, name, params,
-                                          scope_hint="dialog", exact=exact)
+                                          scope_hint="dialog", exact_only=exact_only)
 
-        # Page-wide resolution.
-        candidate = page.get_by_role(role, name=name, exact=exact)
+        # Page-wide resolution: prefer an exact accessible-name match so a
+        # button "新建指令" is not confused with "新建指令(草稿)"; only then
+        # fall back to a substring match.
+        candidate = page.get_by_role(role, name=name, exact=True)
         found = _first_visible(candidate)
         if found is not None:
             return found
 
-        try:
-            fuzzy = page.get_by_role(role, name=re.compile(re.escape(name), re.IGNORECASE))
-            found = _first_visible(fuzzy)
-            if found is not None:
-                return found
-        except Exception:
-            pass
+        if not exact_only:
+            try:
+                fuzzy = page.get_by_role(role, name=re.compile(re.escape(name), re.IGNORECASE))
+                found = _first_visible(fuzzy)
+                if found is not None:
+                    return found
+            except Exception:
+                pass
 
         if role in ("textbox", "combobox", "spinbutton", "generic"):
             for getter in (
-                lambda: page.get_by_label(name, exact=exact),
+                lambda: page.get_by_label(name, exact=True),
                 lambda: page.get_by_placeholder(name),
             ):
                 try:
@@ -337,12 +340,14 @@ class BrowserExecutor:
         raise _LocatorMiss(role, text)
 
     def _resolve_in_scope(self, scope: Locator, role: str, name: str,
-                          params: dict, scope_hint: str = "", exact: bool = False) -> Locator:
-        for getter in (
-            lambda: scope.get_by_role(role, name=name, exact=exact),
-            lambda: scope.get_by_role(role, name=re.compile(re.escape(name), re.IGNORECASE)),
-            lambda: scope.get_by_label(name, exact=exact),
-        ):
+                          params: dict, scope_hint: str = "", exact_only: bool = False) -> Locator:
+        # Exact accessible-name match first, then substring fallback.
+        getters = [lambda: scope.get_by_role(role, name=name, exact=True)]
+        if not exact_only:
+            getters.append(lambda: scope.get_by_role(
+                role, name=re.compile(re.escape(name), re.IGNORECASE)))
+        getters.append(lambda: scope.get_by_label(name, exact=True))
+        for getter in getters:
             try:
                 found = _first_visible(getter())
                 if found is not None:
