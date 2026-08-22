@@ -18,12 +18,8 @@ from __future__ import annotations
 
 import json
 import os
-import socket
-import subprocess
 import sys
 import tempfile
-import threading
-import time
 
 import pytest
 
@@ -35,79 +31,11 @@ for p in (BACKEND, ROOT):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-import uvicorn  # noqa: E402
-
-import app.database as dbmod  # noqa: E402
-from app.database import configure_engine, init_db  # noqa: E402
-from app.main import app  # noqa: E402
-from app.seed import seed  # noqa: E402
 from hosp2mes.agent.browser_agent import BrowserAgent  # noqa: E402
 from hosp2mes.agent.agent import TaskLoader  # noqa: E402
 from hosp2mes.config import Config  # noqa: E402
 from hosp2mes.observation.api_env import ApiEnv  # noqa: E402
 from hosp2mes.observation.browser_env import BrowserEnv  # noqa: E402
-from tests._frontend_server import start_frontend_server  # noqa: E402
-
-
-def _free_port() -> int:
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
-
-
-def _wait_http(url: str, timeout: float = 30.0) -> None:
-    import httpx
-
-    deadline = time.time() + timeout
-    last: Exception | None = None
-    while time.time() < deadline:
-        try:
-            r = httpx.get(url, timeout=2)
-            if r.status_code < 500:
-                return
-        except Exception as exc:
-            last = exc
-        time.sleep(0.3)
-    raise RuntimeError(f"service did not start: {url}: {last}")
-
-
-@pytest.fixture(scope="module")
-def browser_stack():
-    """Start backend (isolated DB) + serve built frontend; yield (frontend, backend)."""
-    backend_port = _free_port()
-    configure_engine(f"sqlite:///{os.path.join(tempfile.mkdtemp(), 'gui.db')}")
-    init_db()
-    db = dbmod.SessionLocal()  # live module attribute (post-configure_engine)
-    try:
-        seed(db)
-    finally:
-        db.close()
-
-    server = uvicorn.Server(uvicorn.Config(
-        app, host="127.0.0.1", port=backend_port, log_level="error"))
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-    backend_url = f"http://127.0.0.1:{backend_port}"
-    _wait_http(backend_url + "/health")
-
-    frontend_port = _free_port()
-    frontend_dist = os.path.join(ROOT, "frontend", "dist")
-    assert os.path.isdir(frontend_dist), (
-        "frontend/dist not found; run `npm run build` (or `vite build`) in "
-        "the frontend directory before running this test"
-    )
-    server_proxy = start_frontend_server(frontend_dist, backend_url, frontend_port)
-    frontend_url = server_proxy.url
-    try:
-        _wait_http(frontend_url)
-    except Exception:
-        server_proxy.shutdown()
-        raise
-    yield frontend_url, backend_url
-    server_proxy.shutdown()
-    server.should_exit = True
 
 
 def test_gui_material_creation_e2e(browser_stack, playwright_browser):

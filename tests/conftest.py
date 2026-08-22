@@ -112,3 +112,56 @@ def browser_page(playwright_browser):
     page = ctx.new_page()
     yield page
     ctx.close()
+
+
+def _wait_http(url: str, timeout: float = 30.0) -> None:
+    import httpx
+
+    deadline = __import__("time").time() + timeout
+    while __import__("time").time() < deadline:
+        try:
+            if httpx.get(url, timeout=2).status_code < 500:
+                return
+        except Exception:
+            pass
+        __import__("time").sleep(0.3)
+    raise RuntimeError(f"service did not start: {url}")
+
+
+@pytest.fixture(scope="module")
+def browser_stack():
+    """A real backend (isolated DB) + served prebuilt Vue dist, for GUI E2E.
+
+    Yields ``(frontend_url, backend_url)``. The frontend is served by the
+    Python ``FrontendProxyServer`` (no Node subprocess), proxying ``/api`` to
+    the backend. Requires ``frontend/dist`` to be built first.
+    """
+    from tests._frontend_server import start_frontend_server
+
+    backend_port = _free_port()
+    configure_engine(_fresh_db())
+    init_db()
+    db = dbmod.SessionLocal()  # live module attribute (post-configure_engine)
+    try:
+        seed(db)
+    finally:
+        db.close()
+
+    server = uvicorn.Server(uvicorn.Config(
+        app, host="127.0.0.1", port=backend_port, log_level="error"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    backend_url = f"http://127.0.0.1:{backend_port}"
+    _wait_http(backend_url + "/health")
+
+    frontend_dist = os.path.join(ROOT, "frontend", "dist")
+    assert os.path.isdir(frontend_dist), (
+        "frontend/dist not found; run `npm run build` (or `vite build`) in "
+        "the frontend directory before running browser tests"
+    )
+    fe = start_frontend_server(frontend_dist, backend_url, _free_port())
+    _wait_http(fe.url)
+
+    yield fe.url, backend_url
+    fe.shutdown()
+    server.should_exit = True
