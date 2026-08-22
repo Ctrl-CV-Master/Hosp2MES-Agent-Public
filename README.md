@@ -5,11 +5,12 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![Vue 3](https://img.shields.io/badge/frontend-Vue%203%20%2B%20TypeScript-success)](https://vuejs.org/)
 [![FastAPI](https://img.shields.io/badge/backend-FastAPI-green)](https://fastapi.tiangolo.com/)
+[![Playwright](https://img.shields.io/badge/GUI-Playwright-orange.svg)](https://playwright.dev/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Hosp2MES** 演示了如何让 Agent 在 MES 业务系统中完成端到端长周期任务:创建物料主文件 → 配置 BOM 与工艺路线 → 下达生产指令 → 完成七阶段生产 → 入库。项目包含一个可独立运行的 Mock MES 后端、一个 Vue 3 可视化控制台、一个模块化 Agent 框架,以及 3 个公开基准任务。
+**Hosp2MES** 演示了如何让 Agent 在 MES 业务系统中完成端到端长周期任务:创建物料主文件 → 配置 BOM 与工艺路线 → 下达生产指令 → 完成七阶段生产 → 入库。项目包含一个可独立运行的 Mock MES 后端、一个 Vue 3 可视化控制台、一个模块化 Agent 框架,以及公开基准任务。
 
-全部数据均为虚构演示数据,不含任何真实医院或工厂信息。
+**关键点**:Agent 的公开 Hero Demo 支持**两种执行模式**——一种通过 REST API 的确定性测试后端,一种通过真实浏览器 GUI(Playwright)驱动 Vue 页面完成观察、定位、点击、输入、选择与等待。全部数据均为虚构演示数据,不含任何真实医院或工厂信息。
 
 ![Dashboard](assets/screenshots/dashboard.png)
 
@@ -23,46 +24,81 @@
 - **局部恢复(Local Recovery)**:遇到注入异常时重试/补偿,而不是重启整段任务。
 - **Agent Trace 与 Monitor**:每步动作、结果、推理摘要实时发布到前端。
 - **MockLLM 回退**:无需 API Key 即可运行完整 E2E 评测。
-- **公开基准**:MES-DEMO-001/002/003,覆盖简单创建、标准流程、长周期+恢复场景。
+- **真实浏览器 GUI 执行(BrowserEnv)**:基于 Playwright 打开 Vue Mock MES,通过语义定位(role + accessible name / label / text)执行业务操作,并输出 before/after 截图与逐步证据。
+- **公开基准**:MES-DEMO-001/002/003 + MES-DEMO-GUI-001,覆盖简单创建、标准流程、长周期+恢复、真实 GUI 场景。
 
 ---
 
-## 🚀 快速开始
+## 🧭 两种执行模式
 
-### 1. 克隆并进入项目
+| 维度 | `ApiEnv`(api 模式) | `BrowserEnv`(browser 模式) |
+|------|---------------------|-----------------------------|
+| 执行方式 | 通过 Mock MES REST API 调用 | 真实打开 Vue 页面,Playwright GUI 操作 |
+| 观察来源 | REST 返回的业务数据 | 网页 DOM / 语义信息 + 截图 |
+| 用途 | **确定性测试 / CI backend** | **真实 GUI 执行(Hero Demo)** |
+| 需要浏览器 | 否 | 是(`playwright install chromium`) |
+| 最终验证 | 读取后端状态 | **独立** ApiEnv/数据库只读回读 |
+
+> ⚠️ **ApiEnv 模式不等于"完整 GUI Agent"。** 它是确定性测试与 CI 的后端。真正打开页面、观察、点击、输入、选择的 GUI Agent 能力由 `BrowserEnv` + `BrowserExecutor` 提供。
+
+---
+
+## 🚀 快速开始(从全新 clone 开始,无需任何预设本地路径)
 
 ```bash
-cd D:\Hosp2MES-Agent-Public
+# 1. 克隆
+git clone https://github.com/Ctrl-CV-Master/Hosp2MES-Agent-Public.git
+cd Hosp2MES-Agent-Public
+
+# 2. 创建虚拟环境并安装后端 + Agent 依赖(含 Playwright)
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# macOS / Linux:
+# source .venv/bin/activate
+
+pip install -r backend/requirements.txt
+playwright install chromium
+
+# 3. 安装并启动前端
+cd frontend
+npm install
+npm run dev
+# 打开 http://127.0.0.1:5173
 ```
 
-### 2. 启动后端
+另开一个终端启动后端:
 
 ```bash
+# 回到仓库根目录(虚拟环境已激活)
 cd backend
-.venv/Scripts/activate
 uvicorn app.main:app --reload --port 8000
 ```
 
 后端 Swagger UI: `http://127.0.0.1:8000/docs`
 
-### 3. 启动前端
+### 运行 Agent(命令行)
+
+**api 模式(确定性测试 / CI,默认):**
 
 ```bash
-cd frontend
-npm install
-npm run dev
+# 在仓库根目录
+PYTHONPATH=.:backend python -m hosp2mes.run --task MES-DEMO-001 --env api
 ```
 
-打开浏览器: `http://127.0.0.1:5173`
-
-### 4. 运行 Agent(命令行)
+**browser 模式(真实 GUI,需先启动前端 + 后端):**
 
 ```bash
-cd <repo-root>
-PYTHONPATH=.:backend python -m hosp2mes.run --task MES-DEMO-001 --provider mock
+# 有头浏览器,可直接观察 Agent 操作页面
+python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --headless false
+
+# 无头(CI)
+python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --headless true
 ```
 
-可用任务: `MES-DEMO-001`、`MES-DEMO-002`、`MES-DEMO-003`。
+可用任务:`MES-DEMO-001`、`MES-DEMO-002`、`MES-DEMO-003`、`MES-DEMO-GUI-001`。
+
+> 浏览器模式会在 `artifacts/runs/<run_id>/` 输出 `steps.json`(逐步 GUI 动作 + 观察摘要)、`summary.json`(最终验证结果与诚实状态)以及每一步的 before/after PNG 截图。
 
 ---
 
@@ -75,11 +111,15 @@ PYTHONPATH=.:backend python benchmark/e2e_probe.py
 
 最新验证结果:
 
-| 任务 | success | recovery_count |
-|------|---------|----------------|
-| MES-DEMO-001 | ✅ | 0 |
-| MES-DEMO-002 | ✅ | 0 |
-| MES-DEMO-003(Hero) | ✅ | 1 |
+| 任务 | 模式 | success | 说明 |
+|------|------|---------|------|
+| MES-DEMO-001 | api | ✅ | 物料创建 |
+| MES-DEMO-002 | api | ✅ | BOM + 生产指令 |
+| MES-DEMO-003(Hero) | api | ✅ | 全流程 + 局部恢复(recovery=1) |
+| MES-DEMO-GUI-001 | browser | ✅ | 通过 Playwright GUI 创建物料 |
+| MES-DEMO-003(Hero) | browser | ⏳ partial | 通过 GUI 完成 物料 + BOM + 订单；执行阶段 7 步点击尚需硬化(见 DEVELOPMENT_STATUS) |
+
+> Browser 模式下的完整 Hero 任务(MES-DEMO-003)状态见 [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md) 的诚实说明。
 
 ---
 
@@ -87,14 +127,16 @@ PYTHONPATH=.:backend python benchmark/e2e_probe.py
 
 ```bash
 cd <repo-root>
-backend/.venv/Scripts/python.exe -m pytest tests/ -q
+# Windows:
+.venv\Scripts\python.exe -m pytest tests/ -q
+# macOS / Linux:
+# .venv/bin/python -m pytest tests/ -q
 ```
-
-当前共 20 个测试全部通过:
 
 - 后端 CRUD 与业务逻辑
 - Agent Planner / Memory / Verifier / Recovery / Evaluator 单元测试
-- 完整 E2E(临时后端 + Agent 完成三个 DEMO 任务)
+- api 模式完整 E2E(临时后端 + Agent 完成 DEMO 任务)
+- **Browser 模式**:`test_browser_observation`、`test_browser_executor`、`test_gui_material_creation_e2e`(真实启动页面并通过 Playwright 操作)
 
 ---
 
@@ -104,7 +146,7 @@ backend/.venv/Scripts/python.exe -m pytest tests/ -q
 |------|------|
 | 前端 | Vue 3 + TypeScript + Vite + Element Plus + ECharts + Axios |
 | 后端 | Python + FastAPI + SQLAlchemy + SQLite + Pydantic |
-| Agent | 模块化 Skill + MockLLM/DeepSeek + ApiEnv(REST) + BrowserEnv 扩展点 |
+| Agent | 模块化 Skill + MockLLM/DeepSeek + ApiEnv(REST,确定性测试) + BrowserEnv(Playwright 真实 GUI) |
 | 评测 | pytest + 自定义 E2E Harness |
 
 ---
@@ -123,24 +165,34 @@ Hosp2MES-Agent-Public/
 │   │   └── main.py       # FastAPI 入口
 │   └── requirements.txt
 ├── frontend/             # Vue 3 控制台
-│   ├── src/
-│   │   ├── views/        # Dashboard / Materials / BOMs / Orders /
-│   │   │                 # Execution / Anomalies / AgentMonitor / Benchmark
-│   │   ├── api/          # Axios 封装
-│   │   └── router/       # Vue Router
-│   └── package.json
+│   └── src/
+│       ├── views/        # Dashboard / Materials / BOMs / Orders /
+│       │                 # Execution / Anomalies / AgentMonitor / Benchmark
+│       ├── api/          # Axios 封装
+│       └── router/       # Vue Router
 ├── hosp2mes/             # Agent 框架
 │   ├── agent/
+│   │   ├── agent.py      # ApiEnv 模式编排
+│   │   └── browser_agent.py   # BrowserEnv 模式编排(GUI)
 │   ├── planner/
 │   ├── memory/
 │   ├── observation/
+│   │   ├── api_env.py           # REST 环境(确定性测试/CI)
+│   │   ├── browser_env.py       # Playwright 真实 GUI 环境
+│   │   ├── browser_observation.py  # 结构化浏览器观察
+│   │   └── dom_extractor.py     # DOM/可访问性语义提取
 │   ├── executor/
+│   │   ├── executor.py          # REST 动作层
+│   │   └── browser_executor.py  # GUI 动作层(语义定位)
+│   ├── evidence/         # artifacts/runs/<run_id> 逐步证据
 │   ├── verifier/
 │   ├── recovery/
 │   ├── trace/
 │   ├── evaluation/
+│   ├── run.py            # CLI(--env api|browser --headless ...)
 │   └── llm.py
 ├── benchmark/            # 基准任务与评测脚本
+├── artifacts/runs/       # (运行生成)GUI 逐步证据与截图
 ├── tests/                # pytest 测试
 ├── docs/                 # 设计文档
 ├── assets/screenshots/   # 演示截图
@@ -155,7 +207,18 @@ Hosp2MES-Agent-Public/
 |--------|----------|---------------|-----------|
 | ![](assets/screenshots/dashboard.png) | ![](assets/screenshots/boms.png) | ![](assets/screenshots/agent.png) | ![](assets/screenshots/benchmark.png) |
 
-更多截图见 [`assets/screenshots/`](assets/screenshots/)。
+### Browser GUI Demo (real Chromium)
+
+The Agent drives the real Vue Mock MES through Playwright. The page below is
+the same UI a human operator would see, served from the prebuilt `dist/`:
+
+![Browser GUI — Materials](assets/screenshots/browser_gui/materials.png)
+![Browser GUI — Execution](assets/screenshots/browser_gui/execution.png)
+
+Every browser run writes before/after screenshots + a structured evidence
+file to `artifacts/runs/<run_id>/`. See
+[`assets/screenshots/browser_gui/`](assets/screenshots/browser_gui/) and the
+`artifacts/runs/` directory after running the CLI.
 
 ---
 
@@ -167,8 +230,6 @@ Hosp2MES-Agent-Public/
 - [基准评测](docs/benchmark.md)
 - [开发指南](docs/development.md)
 - [PRD](docs/product/PRD.md)
-- [用户流程](docs/product/user_flow.md)
-- [Agent 流程](docs/product/agent_flow.md)
 - [开发状态](DEVELOPMENT_STATUS.md)
 
 ---
@@ -190,7 +251,9 @@ cp .env.example .env
 | `LLM_API_KEY` | DeepSeek 兼容 API Key | 空 |
 | `LLM_BASE_URL` | DeepSeek 兼容端点 | 空 |
 | `LLM_MODEL` | 模型名称 | `deepseek-chat` |
-| `BACKEND_BASE_URL` | Agent 访问后端的地址 | `http://127.0.0.1:8000` |
+| `BACKEND_BASE_URL` | Agent 访问后端的地址 | `http://localhost:8000` |
+| `FRONTEND_URL` | Vue Mock MES 前端地址(browser 模式) | `http://localhost:5173` |
+| `BROWSER_HEADLESS` | browser 模式是否无头运行(`1`/`0`) | `1` |
 
 > 公开演示默认使用 `mock` provider,无需填写 API Key。
 
@@ -198,7 +261,8 @@ cp .env.example .env
 
 ## ⚠️ 已知限制
 
-- `BrowserEnv`(Playwright GUI 自动化)当前为预留扩展点;公开演示通过 `ApiEnv`(REST)运行,无需浏览器。
+- `ApiEnv` 是**确定性测试 / CI 后端**,不代表真实 GUI 执行;真实 GUI 执行由 `BrowserEnv` 提供。
+- Browser 模式下的完整 Hero 任务(MES-DEMO-003)仍在完善中,当前诚实的完成状态见 [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md)。
 - 生产环境应使用 PostgreSQL 等服务器级数据库替换 SQLite。
 
 ---
