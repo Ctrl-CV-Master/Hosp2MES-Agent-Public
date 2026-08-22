@@ -6,7 +6,39 @@
 
 ## Current Version
 
-**V1.2 — Agent decision loop: Skill baseline + Agent S3 adapter + Hosp2MES policy agent**
+**V1.2.1 — Real LLM policy verification (DeepSeek llm-strict) + policy provenance**
+
+## Real LLM verification (V1.2.1, honest)
+
+- `REAL_LLM_GUI_001 = PASS` — run_id `MES-DEMO-GUI-001-20260822T151624Z`:
+  8 decision steps, all `policy_source=deepseek`, `fallback_used=false`,
+  `llm_model=deepseek-v4-flash`, `total_llm_calls=8`, `fallback_count=0`,
+  independent verification `material_exists=true`.
+- `REAL_LLM_VARIANT = PASS` — perturbed page (reordered fields, moved button,
+  extra "草稿" button, irrelevant card) filled correctly by DeepSeek
+  (`policy_source=deepseek` for all steps, no fallback, no draft-button hit).
+- Evidence under `artifacts/runs/`: every step records `policy_source`,
+  `llm_model`, `llm_latency_ms`, `llm_call_success`, `llm_parse_success`,
+  `fallback_used`, `decision_rationale` + before/after screenshots.
+
+## Completed (V1.2.1)
+
+- [x] **Policy modes** — `--policy deterministic|llm|llm-strict` (CLI + Config +
+  `AGENT_POLICY` env). `llm-strict` raises `PolicyStrictFailure` on any LLM
+  call failure / JSON parse failure / invalid action / invalid target (no
+  fallback).
+- [x] **Policy provenance** — `PolicyDecision` carries `policy_source`,
+  `llm_model`, `llm_latency_ms`, `llm_call_success`, `llm_parse_success`,
+  `fallback_used`, `decision_rationale`; persisted per-step in evidence. No
+  private chain-of-thought is stored.
+- [x] **Local .env** — `Config.load()` loads a git-ignored `.env` (via
+  python-dotenv with a fallback parser) and falls back to `OPENAI_*` for
+  DeepSeek-compatible endpoints. The real key lives only in local `.env`.
+- [x] **Planner provenance** — `planner_source` recorded (deterministic for now).
+- [x] **Tests** — added `test_llm_strict_never_fallback`,
+  `test_policy_provenance_llm_success_and_fallback`,
+  `test_invalid_llm_action_fails_in_strict_mode` (mock responses; do not
+  replace the real run evidence).
 
 ## Completed (V1.2)
 
@@ -49,7 +81,7 @@
 
 ## Verified
 
-- `pytest tests/ -q`: **39 passed** (32 prior + 3 agent-policy + 4 s3-adapter).
+- `pytest tests/ -q`: **42 passed** (32 prior + 3 agent-policy + 4 s3-adapter + 3 llm-policy-mode).
 - `benchmark/e2e_probe.py`: MES-DEMO-001/002/003 api mode all success.
 - SemanticSkillAgent (Skill baseline) full Hero: PASS (`COMPLETED` / `STORED`).
 - Hosp2MESAgent (one-action-per-step) GUI-001: PASS via the policy loop.

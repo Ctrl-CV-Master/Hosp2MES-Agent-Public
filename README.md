@@ -96,7 +96,9 @@ python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --headless false
 python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --headless true
 
 # 选择 browser 模式的 Agent(默认 skill 基线)
-python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --agent hosp2mes
+python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --agent hosp2mes --policy deterministic
+python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --agent hosp2mes --policy llm
+python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --agent hosp2mes --policy llm-strict  # 需 .env 真实 DeepSeek key
 python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --agent s3   # 需 gui-agents + 凭据
 ```
 
@@ -115,8 +117,19 @@ python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --agent s3   # 需 
 | **Agent S3**(外部框架) | `hosp2mes/agents/agent_s3_adapter.py` | 官方 [Agent S3](https://github.com/simular-ai/Agent-S)(Apache-2.0,`gui-agents`)的适配器 |
 
 - `SemanticSkillAgent` 是 V1.1 `BrowserAgent` 的重命名定位,作为确定性 GUI baseline 保留(`BrowserAgent` 仍是兼容别名)。
-- `Hosp2MESAgent` 是真正的 decision loop,不一次输出整段动作序列;策略输出严格结构化 `{action, target, value, rationale}`,不含私有 chain-of-thought;LLM 路径(DeepSeek 兼容)+ 确定性 observation-driven fallback。
+- `Hosp2MESAgent` 是真正的 decision loop,不一次输出整段动作序列;策略输出严格结构化 `{action, target, value, rationale}`,不含私有 chain-of-thought。策略有三种 `--policy` 模式:`deterministic`(总是 fallback)、`llm`(真实 LLM,失败允许 fallback 但每步记录 provenance)、`llm-strict`(只允许真实 LLM,任何失败立即 FAIL,严禁 fallback)。
 - `AgentS3Adapter` 桥接真实 `AgentS3.predict()`(screenshot 观察 → 预测动作)。真实运行需要 `pip install gui-agents`(Python ≤3.12)+ LLM API Key + UI-TARS grounding 模型端点;本仓库**不伪造**其成功结果。
+
+### 验证状态(真实结果,非笼统声明)
+
+| Agent / Policy | 状态 | 依据 |
+|----------------|------|------|
+| SemanticSkillAgent(Skill 基线) | ✅ PASS | Hero 全流程 GUI 通过,独立验证 COMPLETED/STORED |
+| Hosp2MESAgent `deterministic` | ✅ PASS | `test_agent_policy` + GUI-001 通过 |
+| Hosp2MESAgent `llm-strict`(真实 DeepSeek) | ✅ PASS | `MES-DEMO-GUI-001-20260822T151624Z`,8 步全部 `policy_source=deepseek`、`fallback_used=false`、独立验证 `material_exists=true`;variant 变体运行同样通过 |
+| Agent S3 | adapter ready / runtime not yet evaluated | 真实 import/construct 已验证;真实 `predict()` 需要 LLM Key + UI-TARS grounding 端点(本环境缺失) |
+
+> 真实 DeepSeek 证据见 `artifacts/runs/MES-DEMO-GUI-001-20260822T151624Z/`(`steps.json` 每步含 `policy_source`/`llm_model`/`llm_latency_ms`/`llm_call_success`/`llm_parse_success`/`fallback_used`/`decision_rationale`,及 before/after 截图)。
 
 ---
 
@@ -157,7 +170,7 @@ cd <repo-root>
 - **Browser 模式**:`test_browser_observation`、`test_browser_executor`、`test_gui_material_creation_e2e`、`test_gui_production_execution`(真实启动页面并通过 Playwright 操作,含 scoped semantic target 与重渲染后 locator 重新获取)
 - **Agent policy**:`test_agent_policy`(单步动作决策、页面变体自主性、Hosp2MESAgent 完成 GUI-001)、`test_agent_s3_adapter`(Agent S3 适配器的诚实可用性/映射)
 
-当前共 **39 个测试**全部通过。
+当前共 **42 个测试**全部通过。
 
 ---
 
