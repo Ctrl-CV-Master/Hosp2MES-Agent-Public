@@ -205,7 +205,9 @@ class BrowserAgent:
     def _skill_create_material(self) -> GUIStepResult:
         nav = self._run_actions("create_material", [
             Action("navigate", target="/materials"),
-            Action("wait", value=700),
+            Action("wait", params={"for": "visible", "role": "button",
+                                   "name": "新建物料", "timeout": 8000},
+                   reasoning="Wait for the Materials view to mount"),
         ])
         if not nav.ok:
             return nav
@@ -216,7 +218,8 @@ class BrowserAgent:
         return self._run_actions("create_material", [
             Action("click", target="新建物料", params={"role": "button"},
                    reasoning="Open the material creation dialog"),
-            Action("wait", value=500),
+            Action("wait", params={"for": "visible", "role": "dialog", "timeout": 8000},
+                   reasoning="Wait for the creation dialog to open"),
             Action("type", target="物料编码", value=self.ctx.material_code),
             Action("type", target="物料名称", value=self.ctx.material_name),
             Action("select", target="类型", value=self.ctx.material_type),
@@ -224,13 +227,16 @@ class BrowserAgent:
             Action("type", target="规格", value=self.ctx.specification),
             Action("click", target="保存", params={"role": "button"},
                    reasoning="Persist the new material"),
-            Action("wait", value=900),
+            Action("wait", params={"for": "hidden", "role": "dialog", "timeout": 8000},
+                   reasoning="Wait for the dialog to close after save"),
         ])
 
     def _skill_create_bom(self) -> GUIStepResult:
         nav = self._run_actions("create_bom", [
             Action("navigate", target="/boms"),
-            Action("wait", value=700),
+            Action("wait", params={"for": "visible", "role": "button",
+                                   "name": "新建 BOM", "timeout": 8000},
+                   reasoning="Wait for the BOM view to mount"),
         ])
         if not nav.ok:
             return nav
@@ -240,14 +246,16 @@ class BrowserAgent:
         create = self._run_actions("create_bom", [
             Action("click", target="新建 BOM", params={"role": "button"},
                    reasoning="Open the BOM creation dialog"),
-            Action("wait", value=500),
+            Action("wait", params={"for": "visible", "role": "dialog", "timeout": 8000},
+                   reasoning="Wait for the BOM dialog to open"),
             Action("type", target="BOM 编码", value=self.ctx.bom_code),
             Action("type", target="产品", value=self.ctx.product),
             Action("type", target="版本", value="1.0"),
             Action("type", target="工艺路线", value=_ROUTE),
             Action("click", target="保存", params={"role": "button"},
                    reasoning="Persist the BOM header"),
-            Action("wait", value=900),
+            Action("wait", params={"for": "hidden", "role": "dialog", "timeout": 8000},
+                   reasoning="Wait for the BOM dialog to close after save"),
         ])
         if not create.ok:
             return create
@@ -256,7 +264,8 @@ class BrowserAgent:
             items = self._run_actions("create_bom", [
                 Action("click", target="物料明细", params={"role": "button"},
                        reasoning="Open the BOM materials detail dialog"),
-                Action("wait", value=500),
+                Action("wait", params={"for": "visible", "role": "dialog", "timeout": 8000},
+                       reasoning="Wait for the detail dialog to open"),
             ])
             if not items.ok:
                 return items
@@ -266,20 +275,22 @@ class BrowserAgent:
                     Action("type", target="数量", value=str(m.get("quantity", 1))),
                     Action("click", target="添加", params={"role": "button"},
                            reasoning="Add the material line to the BOM"),
-                    Action("wait", value=700),
                 ])
                 if not step.ok:
                     return step
             self._run_actions("create_bom", [
                 Action("press", target="Escape", reasoning="Close the detail dialog"),
-                Action("wait", value=300),
+                Action("wait", params={"for": "hidden", "role": "dialog", "timeout": 8000},
+                       reasoning="Wait for the detail dialog to close"),
             ])
         return GUIStepResult(True, "bom created via GUI")
 
     def _skill_create_order(self) -> GUIStepResult:
         nav = self._run_actions("create_production_order", [
             Action("navigate", target="/orders"),
-            Action("wait", value=700),
+            Action("wait", params={"for": "visible", "role": "button",
+                                   "name": "新建指令", "timeout": 8000},
+                   reasoning="Wait for the Orders view to mount"),
         ])
         if not nav.ok:
             return nav
@@ -288,14 +299,16 @@ class BrowserAgent:
         return self._run_actions("create_production_order", [
             Action("click", target="新建指令", params={"role": "button"},
                    reasoning="Open the production order creation dialog"),
-            Action("wait", value=500),
+            Action("wait", params={"for": "visible", "role": "dialog", "timeout": 8000},
+                   reasoning="Wait for the order dialog to open"),
             Action("type", target="指令号", value=self.ctx.order_code),
             Action("type", target="产品", value=self.ctx.product),
             Action("type", target="批次", value=self.ctx.batch),
             Action("type", target="数量", value=str(self.ctx.quantity)),
             Action("click", target="保存", params={"role": "button"},
                    reasoning="Persist the production order"),
-            Action("wait", value=900),
+            Action("wait", params={"for": "hidden", "role": "dialog", "timeout": 8000},
+                   reasoning="Wait for the dialog to close after save"),
         ])
 
     def _skill_execute_production(self) -> GUIStepResult:
@@ -306,22 +319,40 @@ class BrowserAgent:
 
         nav = self._run_actions("execute_production", [
             Action("navigate", target="/execution"),
-            Action("wait", value=700),
+            Action("wait", params={"for": "visible", "role": "combobox",
+                                   "name": "选择指令", "timeout": 8000},
+                   reasoning="Wait for the execution view to mount"),
             Action("select", target="选择指令", value=self.ctx.order_code,
                    reasoning="Select the target production order"),
-            Action("wait", value=700),
+            Action("wait", params={"for": "visible", "role": "button",
+                                   "name": "完成称量", "timeout": 8000},
+                   reasoning="Wait for the 7-stage table to render"),
         ])
         if not nav.ok:
             return nav
 
-        for _stage in PRODUCTION_STAGES:
-            step = self._run_actions("execute_production", [
-                Action("click", target="完成", params={"role": "button", "first_enabled": True},
-                       reasoning="Complete the next enabled production stage"),
-                Action("wait", value=700),
+        # Complete each stage in canonical order. Each click is a *scoped
+        # semantic target*: locate the row whose accessible text contains the
+        # stage label, then click the "完成" button inside that row. Locators
+        # are re-resolved from the fresh DOM every step, so a Vue re-render
+        # between stages never leaves a stale handle behind.
+        for stage in PRODUCTION_STAGES:
+            zh = STAGE_LABELS_ZH[stage]
+            click = self._run_actions("execute_production", [
+                Action("click", target={"within": {"role": "row", "text": zh},
+                                        "role": "button", "name": "完成"},
+                       reasoning=f"Complete production stage '{zh}' within its table row"),
             ])
-            if not step.ok:
-                return step
+            if not click.ok:
+                return click
+            wait = self._run_actions("execute_production", [
+                Action("wait", params={"for": "disabled", "role": "button",
+                                       "name": f"完成{zh}", "timeout": 8000},
+                       reasoning=f"Wait until stage '{zh}' is marked completed "
+                                 "(its 完成 button becomes disabled)"),
+            ])
+            if not wait.ok:
+                return wait
 
         order = self.env.get_order(self.ctx.order_code)
         if order and order.get("status") == "COMPLETED":
@@ -355,3 +386,14 @@ class BrowserAgent:
 
 
 _ROUTE = "weighing>dissolution>filtration>filling>labeling>packaging>storage"
+
+# Chinese labels for the 7 canonical production stages (mirrors the Vue view).
+STAGE_LABELS_ZH = {
+    "weighing": "称量",
+    "dissolution": "溶解",
+    "filtration": "过滤",
+    "filling": "分装",
+    "labeling": "贴签",
+    "packaging": "包装",
+    "storage": "入库",
+}

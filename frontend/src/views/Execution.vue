@@ -26,7 +26,7 @@
           </el-table-column>
           <el-table-column label="操作" width="140">
             <template #default="{ row }">
-              <el-button size="small" type="success" :disabled="row.stage_status === 'COMPLETED'" @click="complete(row)">完成</el-button>
+              <el-button size="small" type="success" :disabled="row.stage_status === 'COMPLETED'" :aria-label="`完成${label(row.stage_name)}`" @click="complete(row)">完成</el-button>
             </template>
           </el-table-column>
         </el-table>
