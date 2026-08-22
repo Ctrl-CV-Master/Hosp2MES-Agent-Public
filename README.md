@@ -94,11 +94,29 @@ python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --headless false
 
 # 无头(CI)
 python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --headless true
+
+# 选择 browser 模式的 Agent(默认 skill 基线)
+python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --agent hosp2mes
+python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --agent s3   # 需 gui-agents + 凭据
 ```
 
 可用任务:`MES-DEMO-001`、`MES-DEMO-002`、`MES-DEMO-003`、`MES-DEMO-GUI-001`。
 
 > 浏览器模式会在 `artifacts/runs/<run_id>/` 输出 `steps.json`(逐步 GUI 动作 + 观察摘要)、`summary.json`(最终验证结果与诚实状态)以及每一步的 before/after PNG 截图。
+
+---
+
+## 🤖 三种 Agent
+
+| Agent | 文件 | 决策方式 |
+|-------|------|----------|
+| **SemanticSkillAgent**(Skill 基线) | `hosp2mes/agents/skill_agent.py` | 每个 subgoal 一段**预写**的语义 GUI 动作序列(确定性 baseline) |
+| **Hosp2MESAgent**(LLM action policy) | `hosp2mes/agents/hosp2mes_agent.py` | **每轮只预测一个** next action:`GOAL+SUBGOAL+MEMORY+OBSERVATION → policy → 一个动作 → 执行 → 再观察` |
+| **Agent S3**(外部框架) | `hosp2mes/agents/agent_s3_adapter.py` | 官方 [Agent S3](https://github.com/simular-ai/Agent-S)(Apache-2.0,`gui-agents`)的适配器 |
+
+- `SemanticSkillAgent` 是 V1.1 `BrowserAgent` 的重命名定位,作为确定性 GUI baseline 保留(`BrowserAgent` 仍是兼容别名)。
+- `Hosp2MESAgent` 是真正的 decision loop,不一次输出整段动作序列;策略输出严格结构化 `{action, target, value, rationale}`,不含私有 chain-of-thought;LLM 路径(DeepSeek 兼容)+ 确定性 observation-driven fallback。
+- `AgentS3Adapter` 桥接真实 `AgentS3.predict()`(screenshot 观察 → 预测动作)。真实运行需要 `pip install gui-agents`(Python ≤3.12)+ LLM API Key + UI-TARS grounding 模型端点;本仓库**不伪造**其成功结果。
 
 ---
 
@@ -137,8 +155,9 @@ cd <repo-root>
 - Agent Planner / Memory / Verifier / Recovery / Evaluator 单元测试
 - api 模式完整 E2E(临时后端 + Agent 完成 DEMO 任务)
 - **Browser 模式**:`test_browser_observation`、`test_browser_executor`、`test_gui_material_creation_e2e`、`test_gui_production_execution`(真实启动页面并通过 Playwright 操作,含 scoped semantic target 与重渲染后 locator 重新获取)
+- **Agent policy**:`test_agent_policy`(单步动作决策、页面变体自主性、Hosp2MESAgent 完成 GUI-001)、`test_agent_s3_adapter`(Agent S3 适配器的诚实可用性/映射)
 
-当前共 **32 个测试**全部通过。
+当前共 **39 个测试**全部通过。
 
 ---
 
@@ -175,7 +194,11 @@ Hosp2MES-Agent-Public/
 ├── hosp2mes/             # Agent 框架
 │   ├── agent/
 │   │   ├── agent.py      # ApiEnv 模式编排
-│   │   └── browser_agent.py   # BrowserEnv 模式编排(GUI)
+│   │   └── browser_agent.py   # BrowserAgent = SemanticSkillAgent 别名
+│   ├── agents/           # 三种 browser 模式 Agent
+│   │   ├── skill_agent.py      # SemanticSkillAgent(Skill 基线)
+│   │   ├── hosp2mes_agent.py   # Hosp2MESAgent(单步 LLM action policy)
+│   │   └── agent_s3_adapter.py # Agent S3(官方 gui-agents)适配器
 │   ├── planner/
 │   ├── memory/
 │   ├── observation/
@@ -265,6 +288,7 @@ cp .env.example .env
 ## ⚠️ 已知限制
 
 - `ApiEnv` 是**确定性测试 / CI 后端**,不代表真实 GUI 执行;真实 GUI 执行由 `BrowserEnv` 提供。
+- **Agent S3** 真实运行需要 `pip install gui-agents`(Python ≤3.12)+ LLM API Key + UI-TARS grounding 模型端点;本仓库只提供已接线的适配器,**不伪造**其成功结果。
 - 生产环境应使用 PostgreSQL 等服务器级数据库替换 SQLite。
 
 ---

@@ -118,3 +118,29 @@ concept of "MES-DEMO-003" or "the third button".
 
 None. No task-specific control flow was found, so nothing needed removal in
 this audit.
+
+---
+
+## 8. V1.2 update — the policy agent (Hosp2MESAgent)
+
+The V1.2 `Hosp2MESAgent` (`hosp2mes/agents/hosp2mes_agent.py`) replaces the
+per-subgoal action sequence with a **one-action-per-step decision loop**. The
+same audit conclusions hold:
+
+- **Goal** enters via `Task` → `ExecContext` (business data), not literals.
+- **Observation** (`current_url` / `visible_text` / `interactive_elements`) is
+  passed into `ActionPolicy.next_action(context)` every single step.
+- **Next action** is produced by the policy (LLM path or a deterministic
+  observation-driven fallback), **one action at a time** — never a pre-written
+  array.
+- **Planner** emits `Subgoal{id, description, dependencies, success_condition,
+  capabilities}`; the LLM path may invent arbitrary subgoal ids.
+- **BrowserExecutor** still only resolves semantic targets (role + accessible
+  name), preferring an *exact* name match so a near-duplicate button
+  ("新建指令(草稿)") is never confused with the real one.
+- No `if task_id == ...`, no fixed per-task action array, no fixed button index.
+  `_FORM_SPECS` is keyed by *capability* (a generic business form), and the
+  field values come from `ExecContext` (task data).
+
+`TASK_SPECIFIC_HARDCODING = false` for both `SemanticSkillAgent` and
+`Hosp2MESAgent`.
