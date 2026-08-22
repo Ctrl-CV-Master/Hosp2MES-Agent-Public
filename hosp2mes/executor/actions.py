@@ -21,14 +21,31 @@ ACTION_VERBS = [
 @dataclass
 class Action:
     verb: str
-    target: str = ""          # element / page / stage identifier
+    target: Any = ""          # element / page / stage identifier, or a scoped
+                              # target dict: {"within": {"role","text"},
+                              #                 "role": ..., "name": ...}
     value: Any = None         # input value
     params: dict = field(default_factory=dict)
     reasoning: str = ""       # short, public-safe rationale (NOT private CoT)
 
     def summary(self) -> str:
+        target = _summarize_target(self.target)
         if self.value is not None:
-            return f"{self.verb}:{self.target}={self.value}"
+            return f"{self.verb}:{target}={self.value}"
         if self.params:
-            return f"{self.verb}:{self.target} {self.params}"
-        return f"{self.verb}:{self.target}"
+            return f"{self.verb}:{target} {self.params}"
+        return f"{self.verb}:{target}"
+
+
+def _summarize_target(target: Any) -> str:
+    """Human-readable form of a target (string or scoped dict)."""
+    if isinstance(target, dict):
+        within = target.get("within")
+        parts = []
+        if within:
+            scope = within.get("text") or within.get("name") or ""
+            parts.append(f"within:{within.get('role', 'row')}[{scope}]")
+        parts.append(f"{target.get('role', '?')}:{target.get('name') or target.get('text') or ''}")
+        return " ".join(parts)
+    return str(target)
+
