@@ -35,7 +35,8 @@ No private chain-of-thought is emitted or stored.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from typing import Any
 
 from hosp2mes.agent.agent import PRODUCTION_STAGES, Task
@@ -93,58 +94,194 @@ _FORM_SPECS: dict[str, dict] = {
 }
 
 
-class ActionPolicy:
-    """Produces ONE next action from a policy context (LLM or deterministic)."""
+VALID_ACTIONS = {"click", "type", "input", "select", "scroll", "press",
+                 "wait", "back", "navigate", "extract", "done"}
 
-    def __init__(self, config: Config, ctx: ExecContext):
+
+@dataclass
+class PolicyDecision:
+    """One decision from the action policy, with full provenance.
+
+    The provenance fields make it auditable *which* source produced the action
+    and whether the LLM path was used honestly. No private chain-of-thought is
+    stored — ``rationale`` is a short public rationale only.
+    """
+    action: str = "done"
+    target: Any = ""
+    value: Any = None
+    params: dict = field(default_factory=dict)
+    rationale: str = ""
+    policy_source: str = "deterministic"   # deepseek | deterministic | agent_s3
+    llm_model: str = ""
+    llm_latency_ms: int | None = None
+    llm_call_success: bool = False
+    llm_parse_success: bool = False
+    fallback_used: bool = False
+    llm_error: str = ""
+
+    @staticmethod
+    def from_dict(d: dict, **prov) -> "PolicyDecision":
+        return PolicyDecision(
+            action=d.get("action", "done"),
+            target=d.get("target", ""),
+            value=d.get("value"),
+            params=d.get("params", {}) or {},
+            rationale=d.get("rationale", ""),
+            **prov,
+        )
+
+    def provenance(self) -> dict:
+        return {
+            "policy_source": self.policy_source,
+            "llm_model": self.llm_model,
+            "llm_latency_ms": self.llm_latency_ms,
+            "llm_call_success": self.llm_call_success,
+            "llm_parse_success": self.llm_parse_success,
+            "fallback_used": self.fallback_used,
+            "decision_rationale": self.rationale,
+        }
+
+
+class PolicyStrictFailure(RuntimeError):
+    """Raised in ``llm-strict`` mode when the LLM path fails (no fallback)."""
+
+    def __init__(self, decision: "PolicyDecision"):
+        super().__init__(
+            f"llm-strict: LLM decision failed "
+            f"(call_success={decision.llm_call_success}, "
+            f"parse_success={decision.llm_parse_success}, error={decision.llm_error!r})"
+        )
+        self.decision = decision
+
+
+class ActionPolicy:
+    """Produces ONE next action from a policy context.
+
+    Three modes:
+
+    * ``deterministic`` — always use the deterministic observation-driven policy.
+    * ``llm`` — prefer the real LLM; on failure, fall back to deterministic and
+      mark ``fallback_used=True``.
+    * ``llm-strict`` — only the real LLM. Any call failure / parse failure /
+      invalid action / invalid target raises :class:`PolicyStrictFailure`
+      (the whole task FAILS, no fallback).
+    """
+
+    def __init__(self, config: Config, ctx: ExecContext, llm=None):
         self.config = config
         self.ctx = ctx
-        self._llm = None
-        if config.use_real_llm():
+        self.mode = (config.policy or "deterministic").strip().lower()
+        if self.mode not in ("deterministic", "llm", "llm-strict"):
+            raise ValueError(f"unknown policy mode: {self.mode!r}")
+
+        self._llm = llm
+        if self._llm is None and (config.use_real_llm() or self.mode in ("llm", "llm-strict")):
             from hosp2mes.llm import build_llm
 
             self._llm = build_llm(config)
 
+        if self.mode in ("llm", "llm-strict"):
+            from hosp2mes.llm import MockLLM
+
+            if self._llm is None or isinstance(self._llm, MockLLM):
+                raise ValueError(
+                    f"policy mode {self.mode!r} requires a real LLM provider + API key"
+                )
+
     # ---- public ----------------------------------------------------------
-    def next_action(self, context: dict) -> dict | None:
-        """Return one structured next action, or None to signal 'done'."""
-        if self._llm is not None:
-            decision = self._llm_next_action(context)
-            if decision is not None:
-                return decision
-        return self._deterministic_next_action(context)
+    def next_action(self, context: dict) -> PolicyDecision | None:
+        """Return one provenance-carrying decision, or None to signal done."""
+        if self.mode == "deterministic":
+            d = self._deterministic_next_action(context)
+            return PolicyDecision.from_dict(d, policy_source="deterministic") if d else None
+
+        decision = self._try_llm(context)
+        if decision.action:
+            return decision
+
+        if self.mode == "llm-strict":
+            raise PolicyStrictFailure(decision)
+
+        # "llm" mode: honest fallback, provenance preserved.
+        d = self._deterministic_next_action(context)
+        if d is None:
+            return None
+        return PolicyDecision.from_dict(
+            d,
+            policy_source="deterministic",
+            llm_model=decision.llm_model,
+            llm_latency_ms=decision.llm_latency_ms,
+            llm_call_success=decision.llm_call_success,
+            llm_parse_success=decision.llm_parse_success,
+            fallback_used=True,
+            llm_error=decision.llm_error,
+        )
 
     # ---- LLM path --------------------------------------------------------
-    def _llm_next_action(self, context: dict) -> dict | None:
+    def _try_llm(self, context: dict) -> PolicyDecision:
         from hosp2mes.llm import DeepSeekLLM
 
+        model = getattr(self._llm, "model", self.config.llm_model) or ""
+        base = PolicyDecision(action="", policy_source="deepseek", llm_model=model)
+
+        t0 = time.time()
         try:
             system = (
                 "You are a GUI agent controlling a web page. Given the goal, the "
-                "current subgoal, the structured progress memory and the current "
-                "browser observation (URL, visible text, interactive elements), "
-                "return exactly ONE next action. Respond with only a JSON object: "
+                "current subgoal, the business data to enter, the structured "
+                "progress memory and the current browser observation (URL, visible "
+                "text, interactive elements), return exactly ONE next action. "
+                "Respond with only a JSON object: "
                 '{"action": "<click|type|select|scroll|wait|back|done>", '
                 '"target": <string or {"within": {"role","text"}, "role","name"}>, '
                 '"value": <optional>, "rationale": "<short public rationale>"}. '
+                "Use the exact accessible names from interactive_elements. "
                 "Never reveal internal chain-of-thought."
             )
             user = json.dumps(self._promptable(context), ensure_ascii=False)
             text = self._llm.complete(system, user)
+            base.llm_call_success = True
+            base.llm_latency_ms = int((time.time() - t0) * 1000)
             parsed = DeepSeekLLM.parse_json_block(text)
-            if "action" not in parsed:
-                return None
-            return {
-                "action": parsed.get("action"),
-                "target": parsed.get("target"),
-                "value": parsed.get("value"),
-                "rationale": parsed.get("rationale", ""),
-            }
-        except Exception:
-            return None
+            base.llm_parse_success = True
+
+            action = parsed.get("action")
+            error = self._validate_action(parsed)
+            if error:
+                base.llm_error = error
+                return base  # action stays "" -> caller treats as failure
+            base.action = action
+            base.target = parsed.get("target")
+            base.value = parsed.get("value")
+            base.params = parsed.get("params", {}) or {}
+            base.rationale = parsed.get("rationale", "")
+            return base
+        except Exception as exc:
+            base.llm_latency_ms = int((time.time() - t0) * 1000)
+            base.llm_error = f"{type(exc).__name__}: {exc}"
+            return base
 
     @staticmethod
-    def _promptable(context: dict) -> dict:
+    def _validate_action(parsed: dict) -> str | None:
+        action = parsed.get("action")
+        if action not in VALID_ACTIONS:
+            return f"invalid action {action!r}"
+        target = parsed.get("target")
+        if action in ("click", "type", "input", "select", "scroll", "press", "extract"):
+            if not target:
+                return f"action {action} requires a target"
+            if isinstance(target, dict) and not (target.get("name") or target.get("text")
+                                                 or target.get("within")):
+                return f"action {action} target dict missing name/within"
+        if action == "select" and not parsed.get("value"):
+            return "select requires a value"
+        if action == "navigate" and not target:
+            return "navigate requires a target"
+        if action == "wait" and not (parsed.get("params") or parsed.get("value")):
+            return "wait requires params or value"
+        return None
+
+    def _promptable(self, context: dict) -> dict:
         # Trim the observation to a bounded, prompt-safe size.
         elements = context.get("interactive_elements", [])
         summary = [
@@ -154,6 +291,18 @@ class ActionPolicy:
         return {
             "goal": context.get("goal"),
             "current_subgoal": context.get("current_subgoal"),
+            "business_data": {
+                "product": self.ctx.product,
+                "material_code": self.ctx.material_code,
+                "material_name": self.ctx.material_name,
+                "material_type": self.ctx.material_type,
+                "unit": self.ctx.unit,
+                "specification": self.ctx.specification,
+                "bom_code": self.ctx.bom_code,
+                "order_code": self.ctx.order_code,
+                "batch": self.ctx.batch,
+                "quantity": self.ctx.quantity,
+            },
             "progress_memory": context.get("progress_memory"),
             "current_url": context.get("current_url"),
             "visible_text": (context.get("visible_text") or "")[:3000],
@@ -326,6 +475,8 @@ class Hosp2MESAgent:
         self.failed_subgoal = ""
         self.failure_reason = ""
         self.steps_reached = 0
+        self.total_llm_calls = 0
+        self.fallback_count = 0
 
     # ---- lifecycle -------------------------------------------------------
     def run(self):
@@ -349,7 +500,8 @@ class Hosp2MESAgent:
         self._trace(subgoal="planning", observation=f"subgoals={plan.ids()}",
                     reasoning=f"Planner produced {len(plan.subgoals)} dependency-aware subgoals",
                     action="plan", result=plan.ordered_ids(),
-                    evidence={"plan": plan.to_dict()})
+                    evidence={"plan": plan.to_dict(),
+                              "planner_source": "deterministic"})
 
         for sg_id in plan.ordered_ids():
             self.steps_reached = self.gui_steps
@@ -374,6 +526,11 @@ class Hosp2MESAgent:
             success=success, final_state=verdict.observed, detail=verdict.detail,
             gui_steps=self.gui_steps, failed_subgoal=self.failed_subgoal,
             failure_reason=self.failure_reason, steps_reached=self.steps_reached,
+            policy_mode=self.policy.mode,
+            total_llm_calls=self.total_llm_calls,
+            fallback_count=self.fallback_count,
+            llm_model=getattr(self.policy._llm, "model", self.config.llm_model) or "",
+            planner_source="deterministic",
         )
         self.evidence.flush()
 
@@ -406,7 +563,25 @@ class Hosp2MESAgent:
                 "interactive_elements": obs.interactive_elements,
                 "recent_actions": recent,
             }
-            decision = self.policy.next_action(context) or {"action": "done"}
+
+            try:
+                decision = self.policy.next_action(context)
+            except PolicyStrictFailure as exc:
+                self.failure_reason = str(exc)
+                self.memory.mark_failed(sg.id, reason=self.failure_reason)
+                self._trace(subgoal=sg.id, observation=obs.summary(),
+                            reasoning="llm-strict policy failed (no fallback)",
+                            action="fail:llm-strict", result=str(exc),
+                            evidence=exc.decision.provenance())
+                return False
+
+            if decision is None:
+                decision = PolicyDecision(action="done")
+
+            if decision.policy_source == "deepseek":
+                self.total_llm_calls += 1
+            if decision.fallback_used:
+                self.fallback_count += 1
 
             before_path, _ = self.env.screenshot(f"{sg.id}-{self.gui_steps:02d}-before")
             action = self._to_action(decision)
@@ -422,30 +597,31 @@ class Hosp2MESAgent:
                 observation_summary=obs.summary(),
                 interactive_elements_summary=self._elems_summary(obs),
                 action=(action.summary() if action is not None else "done"),
-                action_target=decision.get("target"),
+                action_target=decision.target,
                 action_result=result_str,
                 screenshot_before=before_path, screenshot_after=after_path,
                 state_changed=state_changed,
+                provenance=decision.provenance(),
             )
             self._trace(subgoal=sg.id, observation=obs.summary(),
-                        reasoning=decision.get("rationale", "policy step"),
+                        reasoning=decision.rationale or "policy step",
                         action=(action.summary() if action is not None else "done"),
                         result=result_str,
-                        evidence={"state_changed": state_changed, "url": obs.current_url})
+                        evidence={"state_changed": state_changed, "url": obs.current_url,
+                                  **decision.provenance()})
 
             recent.append({
-                "action": decision.get("action"),
-                "target": decision.get("target"),
-                "value": decision.get("value"),
+                "action": decision.action,
+                "target": decision.target,
+                "value": decision.value,
                 "result": result_str,
             })
             if len(recent) > 12:
                 recent = recent[-12:]
 
-            if decision.get("action") == "done":
+            if decision.action == "done":
                 # Policy claims done; the next loop iteration verifies via read-back.
                 if not self._subgoal_satisfied(sg):
-                    # Premature done: record and keep trying for a few rounds.
                     self.failure_reason = "policy claimed done but read-back disagrees"
                     continue
 
@@ -454,16 +630,16 @@ class Hosp2MESAgent:
         return self._subgoal_satisfied(sg)
 
     # ---- helpers ---------------------------------------------------------
-    def _to_action(self, decision: dict) -> Action | None:
-        verb = decision.get("action")
+    def _to_action(self, decision: PolicyDecision) -> Action | None:
+        verb = decision.action
         if not verb or verb == "done":
             return None
         return Action(
             verb=verb,
-            target=decision.get("target", ""),
-            value=decision.get("value"),
-            params=decision.get("params", {}),
-            reasoning=decision.get("rationale", ""),
+            target=decision.target,
+            value=decision.value,
+            params=decision.params,
+            reasoning=decision.rationale,
         )
 
     def _subgoal_satisfied(self, sg: Subgoal) -> bool:

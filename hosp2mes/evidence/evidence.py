@@ -43,6 +43,14 @@ class StepEvidence:
     screenshot_after: str | None = None
     state_changed: bool = False
     timestamp: str = ""
+    # policy provenance (V1.2.1)
+    policy_source: str = ""
+    llm_model: str = ""
+    llm_latency_ms: int | None = None
+    llm_call_success: bool = False
+    llm_parse_success: bool = False
+    fallback_used: bool = False
+    decision_rationale: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -66,7 +74,9 @@ class EvidenceWriter:
                observation_summary: str, interactive_elements_summary: str,
                action: str, action_target: str, action_result: str,
                screenshot_before: str | None, screenshot_after: str | None,
-               state_changed: bool) -> StepEvidence:
+               state_changed: bool,
+               provenance: dict | None = None) -> StepEvidence:
+        prov = provenance or {}
         ev = StepEvidence(
             step=step, subgoal=subgoal, url=url,
             observation_summary=observation_summary,
@@ -75,13 +85,22 @@ class EvidenceWriter:
             action_result=action_result,
             screenshot_before=screenshot_before, screenshot_after=screenshot_after,
             state_changed=state_changed, timestamp=_now(),
+            policy_source=prov.get("policy_source", ""),
+            llm_model=prov.get("llm_model", ""),
+            llm_latency_ms=prov.get("llm_latency_ms"),
+            llm_call_success=bool(prov.get("llm_call_success", False)),
+            llm_parse_success=bool(prov.get("llm_parse_success", False)),
+            fallback_used=bool(prov.get("fallback_used", False)),
+            decision_rationale=prov.get("decision_rationale", ""),
         )
         self._steps.append(ev)
         return ev
 
     def finish(self, *, success: bool, final_state: dict, detail: str,
                gui_steps: int, failed_subgoal: str = "", failure_reason: str = "",
-               steps_reached: int = 0) -> None:
+               steps_reached: int = 0, policy_mode: str = "",
+               total_llm_calls: int = 0, fallback_count: int = 0,
+               llm_model: str = "", planner_source: str = "") -> None:
         self._meta.update({
             "finished_at": _now(),
             "success": success,
@@ -91,6 +110,11 @@ class EvidenceWriter:
             "failed_subgoal": failed_subgoal,
             "failure_reason": failure_reason,
             "steps_reached": steps_reached,
+            "policy_mode": policy_mode,
+            "total_llm_calls": total_llm_calls,
+            "fallback_count": fallback_count,
+            "llm_model": llm_model,
+            "planner_source": planner_source,
         })
 
     def flush(self) -> str:

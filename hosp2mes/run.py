@@ -52,6 +52,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--agent", default="skill", choices=["skill", "hosp2mes", "s3"],
                         help="browser-mode agent: skill (deterministic baseline), "
                              "hosp2mes (one-action-per-step policy), s3 (Agent S3)")
+    parser.add_argument("--policy", default=None,
+                        choices=["deterministic", "llm", "llm-strict"],
+                        help="policy mode for --agent hosp2mes: deterministic "
+                             "(always fallback), llm (LLM with fallback), "
+                             "llm-strict (LLM only, fail on any LLM error)")
     parser.add_argument("--headless", default=None, metavar="true|false",
                         help="browser mode only: run Chromium headless (default true)")
     args = parser.parse_args(argv)
@@ -67,6 +72,8 @@ def main(argv: list[str] | None = None) -> int:
         config.agent_mode = args.mode
     if args.llm:
         config.llm_provider = args.llm
+    if args.policy:
+        config.policy = args.policy
     if args.env == "browser":
         config.headless = _parse_bool(args.headless, default=config.headless)
 
