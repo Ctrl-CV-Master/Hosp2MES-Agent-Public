@@ -117,9 +117,9 @@ PYTHONPATH=.:backend python benchmark/e2e_probe.py
 | MES-DEMO-002 | api | ✅ | BOM + 生产指令 |
 | MES-DEMO-003(Hero) | api | ✅ | 全流程 + 局部恢复(recovery=1) |
 | MES-DEMO-GUI-001 | browser | ✅ | 通过 Playwright GUI 创建物料 |
-| MES-DEMO-003(Hero) | browser | ⏳ partial | 通过 GUI 完成 物料 + BOM + 订单；执行阶段 7 步点击尚需硬化(见 DEVELOPMENT_STATUS) |
+| MES-DEMO-003(Hero) | browser | ✅ | 通过 GUI 完成 物料→BOM→指令→7阶段→入库,独立验证通过 |
 
-> Browser 模式下的完整 Hero 任务(MES-DEMO-003)状态见 [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md) 的诚实说明。
+> Browser 模式下的完整 Hero 任务(MES-DEMO-003)已跑通,真实证据见 [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md) 与 `artifacts/runs/<run_id>/`。
 
 ---
 
@@ -136,7 +136,9 @@ cd <repo-root>
 - 后端 CRUD 与业务逻辑
 - Agent Planner / Memory / Verifier / Recovery / Evaluator 单元测试
 - api 模式完整 E2E(临时后端 + Agent 完成 DEMO 任务)
-- **Browser 模式**:`test_browser_observation`、`test_browser_executor`、`test_gui_material_creation_e2e`(真实启动页面并通过 Playwright 操作)
+- **Browser 模式**:`test_browser_observation`、`test_browser_executor`、`test_gui_material_creation_e2e`、`test_gui_production_execution`(真实启动页面并通过 Playwright 操作,含 scoped semantic target 与重渲染后 locator 重新获取)
+
+当前共 **32 个测试**全部通过。
 
 ---
 
@@ -229,6 +231,7 @@ file to `artifacts/runs/<run_id>/`. See
 - [API 文档](docs/api.md)
 - [基准评测](docs/benchmark.md)
 - [开发指南](docs/development.md)
+- [自主性审计](AUTONOMY_AUDIT.md)
 - [PRD](docs/product/PRD.md)
 - [开发状态](DEVELOPMENT_STATUS.md)
 
@@ -262,7 +265,6 @@ cp .env.example .env
 ## ⚠️ 已知限制
 
 - `ApiEnv` 是**确定性测试 / CI 后端**,不代表真实 GUI 执行;真实 GUI 执行由 `BrowserEnv` 提供。
-- Browser 模式下的完整 Hero 任务(MES-DEMO-003)仍在完善中,当前诚实的完成状态见 [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md)。
 - 生产环境应使用 PostgreSQL 等服务器级数据库替换 SQLite。
 
 ---
