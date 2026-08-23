@@ -1,0 +1,108 @@
+[
+  {
+    "step": 8,
+    "subgoal": "create_bom",
+    "action": "click:menuitem:BOM 管理",
+    "action_target": {
+      "role": "menuitem",
+      "name": "BOM 管理"
+    },
+    "value": null,
+    "action_result": "ok",
+    "policy_source": "deepseek",
+    "llm_model": "deepseek-v4-flash",
+    "llm_latency_ms": 1629,
+    "llm_call_success": true,
+    "llm_parse_success": true,
+    "fallback_used": false,
+    "decision_rationale": "Need to go to BOM management to create the BOM.",
+    "state_changed": true,
+    "url": "/materials",
+    "goal": "创建目标产品，建立 BOM，创建生产指令，完成 称量 → 溶解 → 过滤 → 分装 → 贴签 → 包装 → 入库， 最后验证产品生产状态。"
+  },
+  {
+    "step": 24,
+    "subgoal": "create_production_order",
+    "action": "done",
+    "action_target": null,
+    "value": null,
+    "action_result": "ok",
+    "policy_source": "deepseek",
+    "llm_model": "deepseek-v4-flash",
+    "llm_latency_ms": 3228,
+    "llm_call_success": true,
+    "llm_parse_success": true,
+    "fallback_used": false,
+    "decision_rationale": "Production order ORD-REC-001 is visible in the list with correct product, batch, quantity and NOT_STARTED status, so the subgoal is satisfied.",
+    "state_changed": false,
+    "url": "/orders",
+    "goal": "创建目标产品，建立 BOM，创建生产指令，完成 称量 → 溶解 → 过滤 → 分装 → 贴签 → 包装 → 入库， 最后验证产品生产状态。"
+  },
+  {
+    "step": 25,
+    "subgoal": "create_bom",
+    "action": "click:menuitem:BOM 管理",
+    "action_target": {
+      "role": "menuitem",
+      "name": "BOM 管理"
+    },
+    "value": null,
+    "action_result": "ok",
+    "policy_source": "deepseek",
+    "llm_model": "deepseek-v4-flash",
+    "llm_latency_ms": 2911,
+    "llm_call_success": true,
+    "llm_parse_success": true,
+    "fallback_used": false,
+    "decision_rationale": "需要先创建缺失的 BOM，因此进入 BOM 管理页面。",
+    "state_changed": true,
+    "url": "/orders",
+    "goal": "创建目标产品，建立 BOM，创建生产指令，完成 称量 → 溶解 → 过滤 → 分装 → 贴签 → 包装 → 入库， 最后验证产品生产状态。"
+  },
+  {
+    "step": 31,
+    "subgoal": "create_bom",
+    "action": "click:within:dialog[新建 BOM] button:保存",
+    "action_target": {
+      "within": {
+        "role": "dialog",
+        "name": "新建 BOM"
+      },
+      "role": "button",
+      "name": "保存"
+    },
+    "value": null,
+    "action_result": "ok",
+    "policy_source": "deepseek",
+    "llm_model": "deepseek-v4-flash",
+    "llm_latency_ms": 4549,
+    "llm_call_success": true,
+    "llm_parse_success": true,
+    "fallback_used": false,
+    "decision_rationale": "保存已填写的 BOM 表单以创建 BOM-REC-KCL-001",
+    "state_changed": false,
+    "url": "/boms",
+    "goal": "创建目标产品，建立 BOM，创建生产指令，完成 称量 → 溶解 → 过滤 → 分装 → 贴签 → 包装 → 入库， 最后验证产品生产状态。"
+  },
+  {
+    "step": 39,
+    "subgoal": "execute_production",
+    "action": "click:button:完成入库",
+    "action_target": {
+      "role": "button",
+      "name": "完成入库"
+    },
+    "value": null,
+    "action_result": "ok",
+    "policy_source": "deepseek",
+    "llm_model": "deepseek-v4-flash",
+    "llm_latency_ms": 1859,
+    "llm_call_success": true,
+    "llm_parse_success": true,
+    "fallback_used": false,
+    "decision_rationale": "入库是最后一个未完成阶段，点击使其变为已存储状态。",
+    "state_changed": true,
+    "url": "/execution",
+    "goal": "创建目标产品，建立 BOM，创建生产指令，完成 称量 → 溶解 → 过滤 → 分装 → 贴签 → 包装 → 入库， 最后验证产品生产状态。"
+  }
+]

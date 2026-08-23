@@ -1,0 +1,51 @@
+{
+  "run_id": "MES-DEMO-003-20260823T011158Z",
+  "started_at": "2026-08-23T01:11:59Z",
+  "task_id": "MES-DEMO-003",
+  "instruction": "创建目标产品，建立 BOM，创建生产指令，完成 称量 → 溶解 → 过滤 → 分装 → 贴签 → 包装 → 入库， 最后验证产品生产状态。",
+  "mode": "hosp2mes",
+  "finished_at": "2026-08-23T01:13:58Z",
+  "success": true,
+  "final_state": {
+    "material_exists": true,
+    "bom_exists": true,
+    "production_order_status": "COMPLETED",
+    "storage_status": "STORED"
+  },
+  "detail": "all expected conditions observed in live system state",
+  "gui_steps": 31,
+  "failed_subgoal": "",
+  "failure_reason": "",
+  "steps_reached": 22,
+  "policy_mode": "llm-strict",
+  "total_llm_calls": 31,
+  "fallback_count": 0,
+  "llm_model": "deepseek-v4-flash",
+  "planner_source": "deterministic",
+  "total_llm_latency_ms": 102101,
+  "avg_llm_latency_ms": 3293.6,
+  "invalid_action_count": 0,
+  "retry_count": 0,
+  "llm_retry_count": 0,
+  "premature_done_count": 0,
+  "subgoals_total": 4,
+  "subgoals_completed": 4,
+  "per_subgoal_stats": {
+    "create_material": {
+      "steps": 8,
+      "llm_calls": 8
+    },
+    "create_bom": {
+      "steps": 7,
+      "llm_calls": 7
+    },
+    "create_production_order": {
+      "steps": 7,
+      "llm_calls": 7
+    },
+    "execute_production": {
+      "steps": 9,
+      "llm_calls": 9
+    }
+  }
+}

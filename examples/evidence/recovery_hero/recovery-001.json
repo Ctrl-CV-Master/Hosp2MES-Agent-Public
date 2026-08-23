@@ -1,0 +1,173 @@
+{
+  "trigger_step": 24,
+  "failed_subgoal": "create_production_order",
+  "expected_state": {
+    "bom": {
+      "exists": true
+    },
+    "production_order": {
+      "exists": true
+    }
+  },
+  "observed_state": {
+    "material": {
+      "exists": true,
+      "status": "ACTIVE"
+    },
+    "bom": {
+      "exists": false,
+      "status": null
+    },
+    "production_order": {
+      "exists": true,
+      "status": "NOT_STARTED"
+    },
+    "stages": {
+      "weighing": "NOT_STARTED",
+      "dissolution": "NOT_STARTED",
+      "filtration": "NOT_STARTED",
+      "filling": "NOT_STARTED",
+      "labeling": "NOT_STARTED",
+      "packaging": "NOT_STARTED",
+      "storage": "NOT_STARTED"
+    }
+  },
+  "state_diff": {
+    "matched": {
+      "production_order.exists": true
+    },
+    "missing": {
+      "bom.exists": {
+        "expected": true,
+        "actual": false
+      }
+    },
+    "mismatched": {},
+    "conflicting": {},
+    "unexpected": {
+      "material.exists": true,
+      "material.status": "ACTIVE",
+      "bom.status": null,
+      "production_order.status": "NOT_STARTED",
+      "stages.weighing": "NOT_STARTED",
+      "stages.dissolution": "NOT_STARTED",
+      "stages.filtration": "NOT_STARTED",
+      "stages.filling": "NOT_STARTED",
+      "stages.labeling": "NOT_STARTED",
+      "stages.packaging": "NOT_STARTED",
+      "stages.storage": "NOT_STARTED"
+    },
+    "satisfied": {
+      "production_order.exists": true
+    },
+    "is_clean": false
+  },
+  "diagnosis": {
+    "failure_category": "MISSING_PREREQUISITE",
+    "failed_subgoal": "create_production_order",
+    "affected_state": [
+      "bom.exists"
+    ],
+    "root_cause_summary": "Expected prerequisite state ['bom.exists'] is absent before 'create_production_order'.",
+    "recoverable": true
+  },
+  "repair_plan": {
+    "repair_goal": "Restore missing state for subgoal 'create_bom'",
+    "affected_subgoal": "create_bom",
+    "preserved_subgoals": [
+      "create_material"
+    ],
+    "reactivated_subgoals": [
+      "create_bom"
+    ],
+    "invalidated_subgoals": [
+      "create_bom",
+      "create_production_order",
+      "execute_production"
+    ],
+    "resume_subgoal": "create_bom",
+    "success_condition": {
+      "material": {
+        "exists": true
+      },
+      "bom": {
+        "exists": true
+      }
+    }
+  },
+  "repair_steps": [
+    {
+      "step": 25,
+      "subgoal": "create_bom",
+      "action": "click:menuitem:BOM 管理",
+      "action_result": "ok",
+      "policy_source": "deepseek"
+    },
+    {
+      "step": 26,
+      "subgoal": "create_bom",
+      "action": "click:button:新建 BOM",
+      "action_result": "ok",
+      "policy_source": "deepseek"
+    },
+    {
+      "step": 27,
+      "subgoal": "create_bom",
+      "action": "type:textbox:BOM 编码=BOM-REC-KCL-001",
+      "action_result": "ok",
+      "policy_source": "deepseek"
+    },
+    {
+      "step": 28,
+      "subgoal": "create_bom",
+      "action": "type:textbox:产品=DEMO-KCL-RECOVERY",
+      "action_result": "ok",
+      "policy_source": "deepseek"
+    },
+    {
+      "step": 29,
+      "subgoal": "create_bom",
+      "action": "type:textbox:版本=1.0",
+      "action_result": "ok",
+      "policy_source": "deepseek"
+    },
+    {
+      "step": 30,
+      "subgoal": "create_bom",
+      "action": "type:textbox:工艺路线=weighing>dissolution>filtration>filling>labeling>packaging>storage",
+      "action_result": "ok",
+      "policy_source": "deepseek"
+    },
+    {
+      "step": 31,
+      "subgoal": "create_bom",
+      "action": "click:within:dialog[新建 BOM] button:保存",
+      "action_result": "ok",
+      "policy_source": "deepseek"
+    }
+  ],
+  "verification_result": {
+    "passed": true,
+    "observed": {
+      "material_exists": true,
+      "bom_exists": true,
+      "production_order_status": "COMPLETED",
+      "storage_status": "STORED"
+    },
+    "missing": []
+  },
+  "resume_subgoal": "create_bom",
+  "repair_start_step": 24,
+  "repair_end_step": 31,
+  "repair_step_count": 7,
+  "repair_success_condition": {
+    "material": {
+      "exists": true
+    },
+    "bom": {
+      "exists": true
+    }
+  },
+  "repair_verified": true,
+  "resume_step": 32
+}

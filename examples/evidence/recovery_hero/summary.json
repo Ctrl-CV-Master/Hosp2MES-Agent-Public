@@ -1,0 +1,66 @@
+{
+  "run_id": "MES-DEMO-RECOVERY-001-20260823T042516Z",
+  "started_at": "2026-08-23T04:25:18Z",
+  "task_id": "MES-DEMO-RECOVERY-001",
+  "instruction": "创建目标产品，建立 BOM，创建生产指令，完成 称量 → 溶解 → 过滤 → 分装 → 贴签 → 包装 → 入库， 最后验证产品生产状态。",
+  "mode": "hosp2mes",
+  "finished_at": "2026-08-23T04:27:53Z",
+  "success": true,
+  "final_state": {
+    "material_exists": true,
+    "bom_exists": true,
+    "production_order_status": "COMPLETED",
+    "storage_status": "STORED"
+  },
+  "detail": "all expected conditions observed in live system state",
+  "gui_steps": 39,
+  "failed_subgoal": "",
+  "failure_reason": "policy claimed done but read-back disagrees",
+  "steps_reached": 31,
+  "policy_mode": "llm-strict",
+  "total_llm_calls": 39,
+  "fallback_count": 0,
+  "llm_model": "deepseek-v4-flash",
+  "planner_source": "deterministic",
+  "total_llm_latency_ms": 135875,
+  "avg_llm_latency_ms": 3484.0,
+  "invalid_action_count": 0,
+  "retry_count": 0,
+  "llm_retry_count": 0,
+  "premature_done_count": 3,
+  "subgoals_total": 4,
+  "subgoals_completed": 4,
+  "per_subgoal_stats": {
+    "create_material": {
+      "steps": 7,
+      "llm_calls": 7
+    },
+    "create_bom": {
+      "steps": 7,
+      "llm_calls": 7
+    },
+    "create_production_order": {
+      "steps": 10,
+      "llm_calls": 10
+    },
+    "execute_production": {
+      "steps": 8,
+      "llm_calls": 8
+    }
+  },
+  "recovery_metrics": {
+    "recovery_count": 1,
+    "recovery_success_count": 1,
+    "recovery_failure_count": 0,
+    "total_recovery_steps": 7,
+    "reexecuted_completed_subgoals": 0,
+    "local_replan_count": 1,
+    "state_diff_count": 1
+  },
+  "subgoal_execution_counts": {
+    "create_material": 1,
+    "create_bom": 2,
+    "create_production_order": 1,
+    "execute_production": 1
+  }
+}

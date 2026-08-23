@@ -1,0 +1,86 @@
+[
+  {
+    "step": 8,
+    "subgoal": "create_material",
+    "action": "click:button:保存",
+    "action_target": {
+      "role": "button",
+      "name": "保存"
+    },
+    "value": null,
+    "action_result": "ok",
+    "policy_source": "deepseek",
+    "llm_model": "deepseek-v4-flash",
+    "llm_latency_ms": 2688,
+    "llm_call_success": true,
+    "llm_parse_success": true,
+    "fallback_used": false,
+    "decision_rationale": "物料信息已填写完整，点击保存以创建该物料。",
+    "state_changed": true,
+    "url": "/materials",
+    "goal": "创建目标产品，建立 BOM，创建生产指令，完成 称量 → 溶解 → 过滤 → 分装 → 贴签 → 包装 → 入库， 最后验证产品生产状态。"
+  },
+  {
+    "step": 15,
+    "subgoal": "create_bom",
+    "action": "click:button:保存",
+    "action_target": {
+      "role": "button",
+      "name": "保存"
+    },
+    "value": null,
+    "action_result": "ok",
+    "policy_source": "deepseek",
+    "llm_model": "deepseek-v4-flash",
+    "llm_latency_ms": 3172,
+    "llm_call_success": true,
+    "llm_parse_success": true,
+    "fallback_used": false,
+    "decision_rationale": "保存已填写的 BOM 表单以创建物料清单。",
+    "state_changed": false,
+    "url": "/boms",
+    "goal": "创建目标产品，建立 BOM，创建生产指令，完成 称量 → 溶解 → 过滤 → 分装 → 贴签 → 包装 → 入库， 最后验证产品生产状态。"
+  },
+  {
+    "step": 22,
+    "subgoal": "create_production_order",
+    "action": "click:button:保存",
+    "action_target": {
+      "role": "button",
+      "name": "保存"
+    },
+    "value": null,
+    "action_result": "ok",
+    "policy_source": "deepseek",
+    "llm_model": "deepseek-v4-flash",
+    "llm_latency_ms": 1637,
+    "llm_call_success": true,
+    "llm_parse_success": true,
+    "fallback_used": false,
+    "decision_rationale": "保存新建的生产指令以完成创建订单。",
+    "state_changed": false,
+    "url": "/orders",
+    "goal": "创建目标产品，建立 BOM，创建生产指令，完成 称量 → 溶解 → 过滤 → 分装 → 贴签 → 包装 → 入库， 最后验证产品生产状态。"
+  },
+  {
+    "step": 31,
+    "subgoal": "execute_production",
+    "action": "click:button:完成入库",
+    "action_target": {
+      "role": "button",
+      "name": "完成入库"
+    },
+    "value": null,
+    "action_result": "ok",
+    "policy_source": "deepseek",
+    "llm_model": "deepseek-v4-flash",
+    "llm_latency_ms": 1894,
+    "llm_call_success": true,
+    "llm_parse_success": true,
+    "fallback_used": false,
+    "decision_rationale": "所有前序阶段已完成，当前仅剩入库阶段未执行，点击完成入库以完成生产流程。",
+    "state_changed": false,
+    "url": "/execution",
+    "goal": "创建目标产品，建立 BOM，创建生产指令，完成 称量 → 溶解 → 过滤 → 分装 → 贴签 → 包装 → 入库， 最后验证产品生产状态。"
+  }
+]
