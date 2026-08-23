@@ -1,0 +1,37 @@
+# Benchmark Task RECOVERY-01 — Real LLM Recovery Hero (V1.3)
+# All data is synthetic demonstration data.
+#
+# This is the *recovery* counterpart of MES-DEMO-003. The full Hero workflow
+# runs under a real DeepSeek llm-strict policy; a fault is injected by the
+# test harness (NOT by this task file, and NOT visible to the agent) that makes
+# the BOM disappear after it is created. The agent must detect the state diff,
+# diagnose the missing prerequisite, locally re-plan (preserve material,
+# reactivate BOM, invalidate downstream), repair the BOM through the GUI and
+# resume — without re-running the already-completed material subgoal.
+#
+# The fault itself is injected by `run_llm_recovery.py` via benchmark/faults.
+task_id: MES-DEMO-RECOVERY-001
+instruction: >-
+  创建目标产品，建立 BOM，创建生产指令，完成
+  称量 → 溶解 → 过滤 → 分装 → 贴签 → 包装 → 入库，
+  最后验证产品生产状态。
+goal: Complete the full DEMO-KCL-RECOVERY production workflow end-to-end under an injected BOM fault.
+product: DEMO-KCL-RECOVERY
+target_material_code: MAT-REC-KCL
+target_material_name: DEMO氯化钾模拟物料
+material_type: raw
+unit: kg
+specification: synthetic demo material (KCL solution, recovery)
+bom_code: BOM-REC-KCL-001
+bom_materials:
+  - material_code: MAT-REC-KCL
+    quantity: 1.5
+order_code: ORD-REC-001
+batch: B2026REC001
+quantity: 60
+expected_final_state:
+  material_exists: true
+  bom_exists: true
+  production_order_status: COMPLETED
+  storage_status: STORED
+max_steps: 100
