@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-agent:
+    name: Backend & Agent (pytest + api e2e)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install backend + agent dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pytest playwright
+          python -m playwright install chromium --with-deps || python -m playwright install chromium
+      - name: Build frontend (dist required for browser E2E)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci && npm run build
+      - name: Unit + API E2E tests (no LLM key required)
+        env:
+          AGENT_LLM_PROVIDER: mock
+          AGENT_POLICY: deterministic
+        run: |
+          pytest tests/ -q -k "not gui" --maxfail=1
+          PYTHONPATH=.:backend python benchmark/e2e_probe.py
+      - name: Browser E2E (GUI + recovery, deterministic, no LLM key)
+        env:
+          AGENT_LLM_PROVIDER: mock
+          AGENT_POLICY: deterministic
+        run: |
+          pytest tests/ -q -k "gui" --maxfail=1
+
+  frontend-build:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: cd frontend && npm ci && npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          if-no-files-found: error
