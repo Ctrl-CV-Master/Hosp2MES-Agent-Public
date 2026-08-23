@@ -6,33 +6,68 @@
 
 ## Current Version
 
-**V1.2.2 — Real DeepSeek long-horizon Hero verification (llm-strict)**
+**V1.3.0 — Adaptive Recovery + State-Diff Local Replanning (final core algorithm version)**
 
-## Real LLM Hero verification (V1.2.2, honest)
+## Real LLM Recovery Hero verification (V1.3, honest)
 
-- `REAL_LLM_HERO = PASS` — run_id `MES-DEMO-003-20260823T011158Z`:
-  31 decision steps, **all** `policy_source=deepseek`, `fallback_count=0`,
-  `invalid_action_count=0`, `premature_done_count=0`, `llm_model=deepseek-v4-flash`,
-  `planner_source=deterministic`. Independent verification:
-  `material_exists=true`, `bom_exists=true`, `production_order_status=COMPLETED`,
-  `storage_status=STORED`, `4/4` subgoals completed.
-- Full business chain via real GUI: Material → BOM → Production Order →
-  称量 → 溶解 → 过滤 → 分装 → 贴签 → 包装 → 入库. REST API does not participate
-  in GUI action decisions or business-state mutation; it is used only as an
-  independent read-only verifier for subgoal completion checks and final-state
-  verification.
-- Per-subgoal stats: create_material 8 steps/8 calls, create_bom 7/7,
-  create_production_order 7/7, execute_production 9/9.
+- `REAL_LLM_RECOVERY_HERO = PASS` — run_id `MES-DEMO-RECOVERY-001-20260823T035901Z`
+  (clean final run, `--agent hosp2mes --policy llm-strict`, `planner=deterministic`).
+- Fault `FAULT-BOM-001` (`discard_state_change`, once) was injected by the
+  **test harness** via the agent's generic subgoal-completion observer — the
+  agent's policy/prompt/observation never saw the fault id/type/trigger.
+  `FAULT_TRIGGERED=true`.
+- After `create_bom` completed, the harness discarded the BOM; the agent then
+  hit `create_production_order` with the BOM missing, detected the state diff
+  (`bom.exists` expected true / actual false), diagnosed `MISSING_PREREQUISITE`,
+  locally re-planned (`preserve create_material`, `reactivate create_bom`,
+  `invalidate create_bom/create_production_order/execute_production`,
+  `resume_from create_bom`), repaired the BOM through the GUI and resumed.
+- Metrics: `gui_steps=41`, `total_llm_calls=41`, **all** `policy_source=deepseek`,
+  `fallback_count=0`, `premature_done_count=3` (bounded premature-DONE budget
+  triggered recovery), `recovery_count=1`, `recovery_success_count=1`,
+  `recovery_failure_count=0`, `total_recovery_steps=15`,
+  `reexecuted_completed_subgoals=0`, `local_replan_count=1`, `state_diff_count=1`.
+- Independent verification: `material_exists=true`, `bom_exists=true`,
+  `production_order_status=COMPLETED`, `storage_status=STORED`. The material
+  subgoal was **never** re-executed (local recovery, not a restart).
 
-### Failure analysis notes (from earlier attempts, fixed generically)
+## V1.3 — Adaptive Recovery (what was built)
 
-- `LLM_FORMAT`: `deepseek-v4-flash` is a reasoning model; it occasionally
-  returned empty `content` (reasoning spent the token budget). Fixed generically
-  by raising `max_tokens` to 8000 + bounded same-LLM retries with a trimmed
-  prompt (never a deterministic fallback).
-- `UI_TIMING` / infra: a transient SQLite "database is locked" surfaced as HTTP
-  500 on the read-back. Fixed by a SQLite `timeout` and by making the
-  read-back check tolerate transient errors (re-check next iteration).
+- [x] **Canonical business state + state diff** — `hosp2mes/state/`:
+  `BusinessState` (material/bom/production_order/stages), `StateReader` (reads
+  only from the independent read-only verifier), generic nested-path `diff()`
+  with `matched/missing/mismatched/conflicting/satisfied/unexpected`.
+- [x] **Failure diagnosis** — `hosp2mes/recovery/diagnosis.py`: generic
+  categories (`MISSING_PREREQUISITE`/`STATE_MISMATCH`/`ACTION_FAILED`/
+  `UI_TIMING`/`NAVIGATION_ERROR`/`FORM_VALIDATION`/`PREMATURE_DONE`/
+  `TRANSIENT_BACKEND`/`UNKNOWN`); no task-specific category.
+- [x] **Dependency-aware local replanning** — `repair_planner.py` finds the
+  earliest unsatisfied subgoal and emits `preserve`/`reactivate`/`invalidate`/
+  `resume_from` against the plan dependency graph.
+- [x] **Recovery decision loop** — `RecoveryEngine` (state diff → diagnosis →
+  local repair plan) with `max_recovery_attempts=3` retry budget. The
+  `Hosp2MESAgent` now runs a mutable subgoal queue and re-plans locally on
+  failure instead of restarting. Subgoal satisfaction is decided by the live
+  state diff (never "clicked the button", never agent memory).
+- [x] **Recovery trace + metrics** — `recovery-XXX.json` under
+  `artifacts/runs/<run_id>/recovery/`; `recovery_metrics` (recovery_count/
+  success/failure, total_recovery_steps, reexecuted_completed_subgoals,
+  local_replan_count, state_diff_count) in `summary.json`; `recovery_history`
+  appended to ProgressMemory (kept bounded).
+- [x] **Fault injection decoupled** — `benchmark/faults/` `FaultInjector`/
+  `FaultSpec` (test harness only). The agent only observes GUI result + read-only
+  business state; it never learns the fault id/type/trigger.
+- [x] **Bounded premature-DONE budget** — a policy `done` that persistently
+  disagrees with the read-back (≥3×) triggers recovery instead of looping.
+- [x] **Regression tests** — `tests/agent/test_recovery.py`: state diff, missing
+  BOM repair plan, stage-interruption repair plan, retry budget,
+  reexecuted_completed_subgoals==0, premature-DONE diagnosis, full local-replan
+  E2E (scripted policy + fault injector). 52 tests total, all green.
+
+> State-diff-based local recovery demonstrated in synthetic MES fault scenarios
+> (not a general-purpose self-healing industrial agent claim).
+
+
 
 ## Completed (V1.2.2)
 

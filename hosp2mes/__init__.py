@@ -4,4 +4,4 @@ This package is the open-source, fully synthetic demonstration build of the
 Hosp2MES research project. It orchestrates a GUI agent that plans, observes,
 acts on, verifies and recovers during complex multi-step MES business workflows.
 """
-__version__ = "1.2.2"
+__version__ = "1.3.0"

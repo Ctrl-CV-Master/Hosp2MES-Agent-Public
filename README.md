@@ -131,6 +131,7 @@ python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --agent s3   # 需 
 | Hosp2MESAgent DeepSeek GUI-001(`llm-strict`) | ✅ PASS | `MES-DEMO-GUI-001-20260822T151624Z`:8 步全 `deepseek`、`fallback=0`、`material_exists=true` |
 | Hosp2MESAgent DeepSeek Variant(`llm-strict`) | ✅ PASS | 页面变体(字段重排 + 干扰按钮)6 步全 `deepseek`,填对全部字段 |
 | Hosp2MESAgent DeepSeek Hero(`llm-strict`) | ✅ PASS | `MES-DEMO-003-20260823T011158Z`:31 步全 `deepseek`、`fallback=0`、`material_exists/bom_exists=true`、`production_order_status=COMPLETED`、`storage_status=STORED`、`4/4` subgoals |
+| Hosp2MESAgent DeepSeek Recovery Hero(`llm-strict`) | ✅ PASS | `MES-DEMO-RECOVERY-001`(见下文 Adaptive Recovery):BOM 故障注入 → state diff → 诊断 → 局部重规划 → DeepSeek GUI 修复 → 恢复通过,`fallback=0`、`REEXECUTED_COMPLETED_SUBGOALS=0` |
 | Agent S3 | adapter ready / runtime not yet evaluated | 真实 import/construct 已验证;真实 `predict()` 需要 LLM Key + UI-TARS grounding 端点(本环境缺失) |
 
 > Hero 真实证据见 `artifacts/runs/MES-DEMO-003-20260823T011158Z/`(31 步 `steps.json` + `summary.json` + 31×before/after 截图;每步含 `policy_source`/`llm_model`/`llm_latency_ms`/`fallback_used`/`decision_rationale`/`memory_snapshot`)。上下文审计见 [LONG_HORIZON_CONTEXT_AUDIT.md](LONG_HORIZON_CONTEXT_AUDIT.md)。
@@ -153,8 +154,52 @@ PYTHONPATH=.:backend python benchmark/e2e_probe.py
 | MES-DEMO-003(Hero) | api | ✅ | 全流程 + 局部恢复(recovery=1) |
 | MES-DEMO-GUI-001 | browser | ✅ | 通过 Playwright GUI 创建物料 |
 | MES-DEMO-003(Hero) | browser | ✅ | 通过 GUI 完成 物料→BOM→指令→7阶段→入库,独立验证通过 |
+| MES-DEMO-RECOVERY-001 | browser | ✅ | 真实 DeepSeek Recovery Hero:BOM 故障 → 局部恢复 → 全流程 PASS |
 
 > Browser 模式下的完整 Hero 任务(MES-DEMO-003)已跑通,真实证据见 [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md) 与 `artifacts/runs/<run_id>/`。
+
+---
+
+## 🔁 Adaptive Recovery(V1.3)
+
+V1.3 将 Recovery 从"针对预注入异常的补偿"升级为**基于业务状态差异的局部重规划**——不是重新执行完整任务,而是根据当前业务状态动态判断缺失、局部修复、再继续。
+
+```text
+Execution Failure
+      ↓
+State Diff
+      ↓
+Diagnosis
+      ↓
+Local Replan
+      ↓
+GUI Repair
+      ↓
+Independent Verification
+      ↓
+Resume
+```
+
+核心模块:
+
+| 模块 | 职责 |
+|------|------|
+| `hosp2mes/state/` | 统一业务状态(`material/bom/production_order/stages`)+ 通用嵌套路径 `diff()` |
+| `hosp2mes/recovery/diagnosis.py` | 通用失败分类(`MISSING_PREREQUISITE`/`STATE_MISMATCH`/`PREMATURE_DONE`/…) |
+| `hosp2mes/recovery/repair_planner.py` | 依赖感知局部重规划:`preserve`/`reactivate`/`invalidate`/`resume_from` |
+| `hosp2mes/recovery/recovery.py` | RecoveryEngine:diff→诊断→重规划 + 重试预算(`max_recovery_attempts=3`) |
+| `hosp2mes/recovery/recovery_trace.py` | 每次恢复输出 `recovery-XXX.json` |
+| `benchmark/faults/` | 独立故障注入(测试 harness,Agent 决策逻辑完全无感知) |
+
+恢复验证表(真实结果):
+
+| Run | Policy | Fault | Recovery | Final |
+|-----|--------|-------|----------|-------|
+| GUI-001 | DeepSeek strict | None | — | PASS |
+| Hero | DeepSeek strict | None | — | PASS |
+| Recovery Hero | DeepSeek strict | BOM 丢弃(`FAULT-BOM-001`) | Local Replan | PASS |
+
+> State-diff-based local recovery demonstrated in synthetic MES fault scenarios.
 
 ---
 
