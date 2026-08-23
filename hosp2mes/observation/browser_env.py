@@ -10,11 +10,13 @@ Two hard rules are enforced by construction:
 
 * **No REST for action decisions.** ``observe()`` reads only the rendered page.
   The MES REST API is never queried to decide the next action.
-* **Independent verification only.** ``system_state()`` (used by the Evidence
-  Verifier at the end of a run) reads the backend through a *separate,
-  read-only* ``ApiEnv`` client. That client is never used to perform actions —
-  it is the independent read-back that proves the GUI actually changed business
-  state. Passing ``read_only=True`` makes it raise on any POST attempt.
+* **Independent read-only verification.** ``system_state()`` (used by the
+  Evidence Verifier) and the ``get_material`` / ``get_bom`` / ``get_order``
+  helpers read the backend through a *separate, read-only* ``ApiEnv`` client.
+  That client is never used to perform actions. REST API does not participate
+  in GUI action decisions or business-state mutation; it is used only as an
+  independent read-only verifier for subgoal completion checks and final-state
+  verification. Passing ``read_only=True`` makes it raise on any POST attempt.
 
 The GUI action vocabulary is realized by :class:`~hosp2mes.executor.browser_executor.BrowserExecutor`.
 """
@@ -206,14 +208,16 @@ class BrowserEnv:
 
         return BrowserExecutor().execute(action, self)
 
-    # ---- independent verification (read-only, final state only) ----------
+    # ---- independent verification (read-only verifier) -------------------
     def system_state(self, product: str | None = None,
                      material_code: str | None = None) -> dict:
         """Independent business-state read-back via a read-only REST client.
 
-        This is the ONLY place the backend is contacted in browser mode, and it
-        is used exclusively for the final evidence-gated verification. It can
-        never perform a business operation.
+        This is the ONLY place the backend is contacted in browser mode. It is
+        used as an independent read-only verifier for subgoal completion checks
+        (via ``get_material`` / ``get_bom`` / ``get_order``) and final-state
+        verification (via ``system_state``). It can never perform a business
+        operation.
         """
         return self._verify_env.system_state(product=product, material_code=material_code)
 

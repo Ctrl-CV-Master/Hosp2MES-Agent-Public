@@ -37,9 +37,11 @@
 | 观察来源 | REST 返回的业务数据 | 网页 DOM / 语义信息 + 截图 |
 | 用途 | **确定性测试 / CI backend** | **真实 GUI 执行(Hero Demo)** |
 | 需要浏览器 | 否 | 是(`playwright install chromium`) |
-| 最终验证 | 读取后端状态 | **独立** ApiEnv/数据库只读回读 |
+| 业务状态验证 | 读取后端状态 | **独立** 只读 ApiEnv 回读(子目标完成检查 + 最终业务状态验证) |
 
 > ⚠️ **ApiEnv 模式不等于"完整 GUI Agent"。** 它是确定性测试与 CI 的后端。真正打开页面、观察、点击、输入、选择的 GUI Agent 能力由 `BrowserEnv` + `BrowserExecutor` 提供。
+
+> REST API 不参与 GUI 动作决策，也不修改 MES 业务状态，仅作为独立只读验证器，用于子目标完成检查和最终业务状态验证。(REST API does not participate in GUI action decisions or business-state mutation. It is used only as an independent read-only verifier for subgoal completion checks and final-state verification.)
 
 ---
 

@@ -569,7 +569,8 @@ class Hosp2MESAgent:
 
         report = Evaluator().evaluate(
             task_id=self.task.task_id, memory=self.memory, trace=self.trace,
-            verifier_result=verdict, recovery_count=0, premature_done=0,
+            verifier_result=verdict, recovery_count=0,
+            premature_done=self.premature_done_count,
             mode=self.config.agent_mode,
         )
         return report, self.trace, self.memory

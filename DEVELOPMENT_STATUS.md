@@ -17,8 +17,10 @@
   `material_exists=true`, `bom_exists=true`, `production_order_status=COMPLETED`,
   `storage_status=STORED`, `4/4` subgoals completed.
 - Full business chain via real GUI: Material → BOM → Production Order →
-  称量 → 溶解 → 过滤 → 分装 → 贴签 → 包装 → 入库. REST used only for the
-  final independent read-back.
+  称量 → 溶解 → 过滤 → 分装 → 贴签 → 包装 → 入库. REST API does not participate
+  in GUI action decisions or business-state mutation; it is used only as an
+  independent read-only verifier for subgoal completion checks and final-state
+  verification.
 - Per-subgoal stats: create_material 8 steps/8 calls, create_bom 7/7,
   create_production_order 7/7, execute_production 9/9.
 
