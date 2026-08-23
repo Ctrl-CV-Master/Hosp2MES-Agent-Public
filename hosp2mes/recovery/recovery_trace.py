@@ -25,6 +25,14 @@ class RecoveryTrace:
     repair_steps: list[dict] = field(default_factory=list)
     verification_result: dict = field(default_factory=dict)
     resume_subgoal: str = ""
+    # Recovery-episode boundaries (V1.3.1): only the GUI steps between
+    # repair_start_step and repair_end_step count as recovery steps.
+    repair_start_step: int = 0
+    repair_end_step: int = 0
+    repair_step_count: int = 0
+    repair_success_condition: dict = field(default_factory=dict)
+    repair_verified: bool = False
+    resume_step: int = 0
 
     def to_dict(self) -> dict:
         return asdict(self)

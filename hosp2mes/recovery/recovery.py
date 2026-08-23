@@ -188,11 +188,11 @@ class RecoveryEngine:
 
         ordered = plan.ordered_ids()
         remaining = [sg for sg in ordered if sg not in set(rp.preserved_subgoals)]
-        # A preserved subgoal must never be re-executed; count any violation
-        # (should be zero) as a hard metric for the acceptance gate.
-        self.reexecuted_completed_subgoals += len(
-            set(remaining) & set(rp.preserved_subgoals)
-        )
+        # NOTE: reexecuted_completed_subgoals is NOT derived from the queue here
+        # (that would be trivially zero). It is computed by the agent from the
+        # *real* subgoal_execution_counts: a preserved subgoal counts as
+        # re-executed only if its execution count actually increased after the
+        # recovery episode. See Hosp2MESAgent._compute_reexecuted().
 
         self._record_history(failed_subgoal, diag, d, attempt=self.recovery_count,
                              result="PLANNED", repair_subgoal=rp.resume_subgoal)

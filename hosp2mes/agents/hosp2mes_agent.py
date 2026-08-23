@@ -515,6 +515,11 @@ class Hosp2MESAgent:
         self._recovery_start_step = 0
         self._consecutive_premature_done = 0
         self._premature_done_budget = getattr(config, "premature_done_budget", 3) or 3
+        # Real execution accounting (V1.3.1): how many times each subgoal was
+        # actually *executed* (entered its decision loop), never "planned" or
+        # "verified". Used to measure re-executed completed subgoals honestly.
+        self.subgoal_execution_counts: dict[str, int] = {}
+        self._preserved_snapshots: list[dict[str, int]] = []
 
     # ---- lifecycle -------------------------------------------------------
     def run(self):
@@ -585,6 +590,8 @@ class Hosp2MESAgent:
                               "missing": verdict.missing})
 
         self._finalize_recovery_traces(verdict)
+        # Compute the honest re-execution count from real execution counters.
+        self.recovery.reexecuted_completed_subgoals = self._compute_reexecuted()
         self.trace.finish_run(success, verdict.detail, len(self.trace.steps),
                               self.recovery.recovery_count)
         avg_latency = (self.total_llm_latency_ms / self.total_llm_calls
@@ -609,6 +616,7 @@ class Hosp2MESAgent:
                                    if self.memory.is_completed(s.id)),
             per_subgoal_stats=self.per_subgoal_stats,
             recovery_metrics=self.recovery.to_metrics(),
+            subgoal_execution_counts=self.subgoal_execution_counts,
         )
         self.evidence.flush()
 
@@ -639,6 +647,7 @@ class Hosp2MESAgent:
 
         # Record the recovery trace (repair_steps + verification filled at the end).
         self._recovery_start_step = self.gui_steps
+        rp = result.repair_plan
         trace = RecoveryTrace(
             trigger_step=self.gui_steps,
             failed_subgoal=failed_sg_id,
@@ -646,10 +655,19 @@ class Hosp2MESAgent:
             observed_state=result.observed_state,
             state_diff=result.state_diff.to_dict() if result.state_diff else {},
             diagnosis=result.diagnosis.to_dict() if result.diagnosis else {},
-            repair_plan=result.repair_plan.to_dict() if result.repair_plan else {},
-            resume_subgoal=(result.repair_plan.resume_subgoal if result.repair_plan else ""),
+            repair_plan=rp.to_dict() if rp else {},
+            resume_subgoal=(rp.resume_subgoal if rp else ""),
+            repair_start_step=self.gui_steps,
+            repair_success_condition=(rp.success_condition if rp else {}),
         )
         self.recovery.traces.append(trace)
+        # Snapshot the execution counts of the *preserved* (state-verified
+        # completed) subgoals so a real re-execution can be detected later.
+        if rp is not None:
+            self._preserved_snapshots.append({
+                sg: self.subgoal_execution_counts.get(sg, 0)
+                for sg in rp.preserved_subgoals
+            })
         self._trace(subgoal=failed_sg_id,
                     observation=f"recovery: state_diff={result.state_diff.to_dict() if result.state_diff else {}}",
                     reasoning=(result.diagnosis.root_cause_summary if result.diagnosis else "recovery"),
@@ -672,23 +690,28 @@ class Hosp2MESAgent:
         if self._episode_pending:
             self.recovery.finish_episode(True)
             self._episode_pending = False
+            # The resume subgoal's success condition was just verified: this
+            # closes the recovery episode (repair_end_step = current step).
+            if self.recovery.traces:
+                trace = self.recovery.traces[-1]
+                trace.repair_end_step = self.gui_steps
+                trace.repair_verified = True
+                trace.resume_step = self.gui_steps + 1
 
     def _finalize_recovery_traces(self, verdict) -> None:
         """Fill repair_steps + verification_result and write recovery-XXX.json."""
         steps = self.evidence.steps
         total_repair = 0
         for i, trace in enumerate(self.recovery.traces):
-            start = trace.trigger_step
-            # End of this episode = start of the next one, or the last step.
-            end = self.gui_steps
-            if i + 1 < len(self.recovery.traces):
-                end = self.recovery.traces[i + 1].trigger_step
+            start = trace.repair_start_step or trace.trigger_step
+            end = trace.repair_end_step or trace.repair_start_step or trace.trigger_step
             trace.repair_steps = [
                 {"step": s.step, "subgoal": s.subgoal, "action": s.action,
                  "action_result": s.action_result, "policy_source": s.policy_source}
                 for s in steps if start < s.step <= end
             ]
-            total_repair += len(trace.repair_steps)
+            trace.repair_step_count = len(trace.repair_steps)
+            total_repair += trace.repair_step_count
             trace.verification_result = {
                 "passed": verdict.passed,
                 "observed": verdict.observed,
@@ -700,6 +723,20 @@ class Hosp2MESAgent:
                 pass
         self.recovery.total_recovery_steps = total_repair
 
+    def _compute_reexecuted(self) -> int:
+        """Count preserved subgoals whose *real* execution count increased after
+        the recovery episode (a genuine re-execution, not a queue derivation)."""
+        reexecuted = 0
+        seen: set[str] = set()
+        for snap in self._preserved_snapshots:
+            for sg, before in snap.items():
+                if sg in seen:
+                    continue
+                if self.subgoal_execution_counts.get(sg, 0) > before:
+                    reexecuted += 1
+                    seen.add(sg)
+        return reexecuted
+
     # ---- per-subgoal decision loop ---------------------------------------
     def _run_subgoal_loop(self, sg: Subgoal) -> bool:
         max_steps = self.task.max_steps or self.config.max_steps
@@ -707,6 +744,9 @@ class Hosp2MESAgent:
         sg_llm_calls = 0
         sg_steps = 0
         self._consecutive_premature_done = 0
+        # This method is only called when the subgoal is NOT already satisfied,
+        # so entering it is a *real* execution episode (not a plan / verify).
+        self.subgoal_execution_counts[sg.id] = self.subgoal_execution_counts.get(sg.id, 0) + 1
         for _ in range(max_steps):
             if self._subgoal_satisfied(sg):
                 self.memory.mark_completed(sg.id, evidence={"success_condition": sg.success_condition})
