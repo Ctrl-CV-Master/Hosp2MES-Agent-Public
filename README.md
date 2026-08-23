@@ -126,10 +126,12 @@ python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --agent s3   # 需 
 |----------------|------|------|
 | SemanticSkillAgent(Skill 基线) | ✅ PASS | Hero 全流程 GUI 通过,独立验证 COMPLETED/STORED |
 | Hosp2MESAgent `deterministic` | ✅ PASS | `test_agent_policy` + GUI-001 通过 |
-| Hosp2MESAgent `llm-strict`(真实 DeepSeek) | ✅ PASS | `MES-DEMO-GUI-001-20260822T151624Z`,8 步全部 `policy_source=deepseek`、`fallback_used=false`、独立验证 `material_exists=true`;variant 变体运行同样通过 |
+| Hosp2MESAgent DeepSeek GUI-001(`llm-strict`) | ✅ PASS | `MES-DEMO-GUI-001-20260822T151624Z`:8 步全 `deepseek`、`fallback=0`、`material_exists=true` |
+| Hosp2MESAgent DeepSeek Variant(`llm-strict`) | ✅ PASS | 页面变体(字段重排 + 干扰按钮)6 步全 `deepseek`,填对全部字段 |
+| Hosp2MESAgent DeepSeek Hero(`llm-strict`) | ✅ PASS | `MES-DEMO-003-20260823T011158Z`:31 步全 `deepseek`、`fallback=0`、`material_exists/bom_exists=true`、`production_order_status=COMPLETED`、`storage_status=STORED`、`4/4` subgoals |
 | Agent S3 | adapter ready / runtime not yet evaluated | 真实 import/construct 已验证;真实 `predict()` 需要 LLM Key + UI-TARS grounding 端点(本环境缺失) |
 
-> 真实 DeepSeek 证据见 `artifacts/runs/MES-DEMO-GUI-001-20260822T151624Z/`(`steps.json` 每步含 `policy_source`/`llm_model`/`llm_latency_ms`/`llm_call_success`/`llm_parse_success`/`fallback_used`/`decision_rationale`,及 before/after 截图)。
+> Hero 真实证据见 `artifacts/runs/MES-DEMO-003-20260823T011158Z/`(31 步 `steps.json` + `summary.json` + 31×before/after 截图;每步含 `policy_source`/`llm_model`/`llm_latency_ms`/`fallback_used`/`decision_rationale`/`memory_snapshot`)。上下文审计见 [LONG_HORIZON_CONTEXT_AUDIT.md](LONG_HORIZON_CONTEXT_AUDIT.md)。
 
 ---
 

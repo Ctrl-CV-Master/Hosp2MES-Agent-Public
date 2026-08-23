@@ -6,7 +6,46 @@
 
 ## Current Version
 
-**V1.2.1 — Real LLM policy verification (DeepSeek llm-strict) + policy provenance**
+**V1.2.2 — Real DeepSeek long-horizon Hero verification (llm-strict)**
+
+## Real LLM Hero verification (V1.2.2, honest)
+
+- `REAL_LLM_HERO = PASS` — run_id `MES-DEMO-003-20260823T011158Z`:
+  31 decision steps, **all** `policy_source=deepseek`, `fallback_count=0`,
+  `invalid_action_count=0`, `premature_done_count=0`, `llm_model=deepseek-v4-flash`,
+  `planner_source=deterministic`. Independent verification:
+  `material_exists=true`, `bom_exists=true`, `production_order_status=COMPLETED`,
+  `storage_status=STORED`, `4/4` subgoals completed.
+- Full business chain via real GUI: Material → BOM → Production Order →
+  称量 → 溶解 → 过滤 → 分装 → 贴签 → 包装 → 入库. REST used only for the
+  final independent read-back.
+- Per-subgoal stats: create_material 8 steps/8 calls, create_bom 7/7,
+  create_production_order 7/7, execute_production 9/9.
+
+### Failure analysis notes (from earlier attempts, fixed generically)
+
+- `LLM_FORMAT`: `deepseek-v4-flash` is a reasoning model; it occasionally
+  returned empty `content` (reasoning spent the token budget). Fixed generically
+  by raising `max_tokens` to 8000 + bounded same-LLM retries with a trimmed
+  prompt (never a deterministic fallback).
+- `UI_TIMING` / infra: a transient SQLite "database is locked" surfaced as HTTP
+  500 on the read-back. Fixed by a SQLite `timeout` and by making the
+  read-back check tolerate transient errors (re-check next iteration).
+
+## Completed (V1.2.2)
+
+- [x] **Long-horizon prompt** — the LLM policy now receives `bom_materials`,
+  `route`, `bom_version`, `production_stages` (with Chinese labels) and a
+  workflow-aware system prompt (scoped targets, select, wait conditions).
+- [x] **Long-horizon metrics** — `total_llm_latency_ms` / `avg_llm_latency_ms` /
+  `invalid_action_count` / `llm_retry_count` / `premature_done_count` /
+  `subgoals_total` / `subgoals_completed` / `per_subgoal_stats`.
+- [x] **P0.3 provenance fields** — each step records `goal` + `memory_snapshot`
+  (+ `value`) alongside the existing provenance; no private chain-of-thought.
+- [x] **Premature-DONE guard** — a policy `done` is rejected unless the
+  independent read-back agrees; `premature_done_count` is recorded.
+- [x] **LONG_HORIZON_CONTEXT_AUDIT.md** — documents the bounded per-step context
+  (no unbounded history accumulation).
 
 ## Real LLM verification (V1.2.1, honest)
 
