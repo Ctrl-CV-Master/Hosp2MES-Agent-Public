@@ -34,7 +34,7 @@ class FakeLLM:
         self.exc = exc
         self.calls = 0
 
-    def complete(self, system, user):
+    def complete(self, system, user, **kwargs):
         self.calls += 1
         if self.exc:
             raise self.exc
@@ -64,10 +64,13 @@ def test_llm_strict_never_fallback():
     fake = FakeLLM(exc=RuntimeError("network down"))
     policy = ActionPolicy(Config(llm_provider="deepseek", policy="llm-strict"),
                           _ctx(), llm=fake)
-    with pytest.raises(PolicyStrictFailure):
+    with pytest.raises(PolicyStrictFailure) as exc_info:
         policy.next_action(_context())
-    # The strict mode must NOT have produced a deterministic fallback action.
-    assert fake.calls == 1
+    # The strict mode must NOT have produced a deterministic fallback action;
+    # it retried the LLM (bounded) and then failed honestly.
+    assert fake.calls == 5
+    assert exc_info.value.decision.llm_call_success is False
+    assert exc_info.value.decision.fallback_used is False
 
 
 def test_policy_provenance_llm_success_and_fallback():

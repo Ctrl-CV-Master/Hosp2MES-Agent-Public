@@ -187,6 +187,8 @@ class ActionPolicy:
                 raise ValueError(
                     f"policy mode {self.mode!r} requires a real LLM provider + API key"
                 )
+        self.invalid_action_count = 0
+        self.llm_retry_count = 0
 
     # ---- public ----------------------------------------------------------
     def next_action(self, context: dict) -> PolicyDecision | None:
@@ -224,42 +226,48 @@ class ActionPolicy:
         model = getattr(self._llm, "model", self.config.llm_model) or ""
         base = PolicyDecision(action="", policy_source="deepseek", llm_model=model)
 
-        t0 = time.time()
-        try:
-            system = (
-                "You are a GUI agent controlling a web page. Given the goal, the "
-                "current subgoal, the business data to enter, the structured "
-                "progress memory and the current browser observation (URL, visible "
-                "text, interactive elements), return exactly ONE next action. "
-                "Respond with only a JSON object: "
-                '{"action": "<click|type|select|scroll|wait|back|done>", '
-                '"target": <string or {"within": {"role","text"}, "role","name"}>, '
-                '"value": <optional>, "rationale": "<short public rationale>"}. '
-                "Use the exact accessible names from interactive_elements. "
-                "Never reveal internal chain-of-thought."
-            )
-            user = json.dumps(self._promptable(context), ensure_ascii=False)
-            text = self._llm.complete(system, user)
-            base.llm_call_success = True
-            base.llm_latency_ms = int((time.time() - t0) * 1000)
-            parsed = DeepSeekLLM.parse_json_block(text)
-            base.llm_parse_success = True
+        # A DeepSeek reasoning model occasionally returns an empty ``content``
+        # (reasoning spent but no final answer — a known behaviour when the
+        # reasoning consumes the token budget) or an unparseable JSON. Retry the
+        # *same* LLM (never a deterministic fallback) a bounded number of times,
+        # with a large token budget and a progressively trimmed prompt. This is
+        # a generic robustness mechanism, not task-specific.
+        max_attempts = 5
+        for attempt in range(max_attempts):
+            t0 = time.time()
+            try:
+                trim = attempt >= 2
+                user = json.dumps(self._promptable(context, trim=trim),
+                                  ensure_ascii=False)
+                text = self._llm.complete(_LONG_HORIZON_SYSTEM_PROMPT, user, max_tokens=8000)
+                base.llm_call_success = True
+                base.llm_latency_ms = int((time.time() - t0) * 1000)
+                if not text or not text.strip():
+                    raise ValueError("empty LLM content")
+                parsed = DeepSeekLLM.parse_json_block(text)
+                base.llm_parse_success = True
+                break
+            except Exception as exc:
+                base.llm_latency_ms = int((time.time() - t0) * 1000)
+                base.llm_error = f"{type(exc).__name__}: {exc}"
+                if attempt < max_attempts - 1:
+                    self.llm_retry_count += 1
+                    continue
+                return base
 
-            action = parsed.get("action")
-            error = self._validate_action(parsed)
-            if error:
-                base.llm_error = error
-                return base  # action stays "" -> caller treats as failure
-            base.action = action
-            base.target = parsed.get("target")
-            base.value = parsed.get("value")
-            base.params = parsed.get("params", {}) or {}
-            base.rationale = parsed.get("rationale", "")
-            return base
-        except Exception as exc:
-            base.llm_latency_ms = int((time.time() - t0) * 1000)
-            base.llm_error = f"{type(exc).__name__}: {exc}"
-            return base
+        # Parse + validate (already parsed above).
+        action = parsed.get("action")
+        error = self._validate_action(parsed)
+        if error:
+            self.invalid_action_count += 1
+            base.llm_error = error
+            return base  # action stays "" -> caller treats as failure
+        base.action = action
+        base.target = parsed.get("target")
+        base.value = parsed.get("value")
+        base.params = parsed.get("params", {}) or {}
+        base.rationale = parsed.get("rationale", "")
+        return base
 
     @staticmethod
     def _validate_action(parsed: dict) -> str | None:
@@ -281,12 +289,14 @@ class ActionPolicy:
             return "wait requires params or value"
         return None
 
-    def _promptable(self, context: dict) -> dict:
+    def _promptable(self, context: dict, trim: bool = False) -> dict:
         # Trim the observation to a bounded, prompt-safe size.
         elements = context.get("interactive_elements", [])
+        max_elements = 40 if trim else 60
+        max_text = 800 if trim else 3000
         summary = [
             {"role": e.get("role"), "name": e.get("accessible_name") or e.get("text")}
-            for e in elements[:60]
+            for e in elements[:max_elements]
         ]
         return {
             "goal": context.get("goal"),
@@ -299,13 +309,20 @@ class ActionPolicy:
                 "unit": self.ctx.unit,
                 "specification": self.ctx.specification,
                 "bom_code": self.ctx.bom_code,
+                "bom_version": _BOM_VERSION,
+                "route": _ROUTE,
+                "bom_materials": [
+                    {"material_code": m.get("material_code"), "quantity": m.get("quantity")}
+                    for m in (self.ctx.bom_materials or [])
+                ],
                 "order_code": self.ctx.order_code,
                 "batch": self.ctx.batch,
                 "quantity": self.ctx.quantity,
+                "production_stages": _PRODUCTION_STAGE_HINTS,
             },
             "progress_memory": context.get("progress_memory"),
             "current_url": context.get("current_url"),
-            "visible_text": (context.get("visible_text") or "")[:3000],
+            "visible_text": (context.get("visible_text") or "")[:max_text],
             "interactive_elements": summary,
             "recent_actions": context.get("recent_actions", [])[-8:],
         }
@@ -477,6 +494,10 @@ class Hosp2MESAgent:
         self.steps_reached = 0
         self.total_llm_calls = 0
         self.fallback_count = 0
+        self.retry_count = 0
+        self.premature_done_count = 0
+        self.total_llm_latency_ms = 0
+        self.per_subgoal_stats: dict[str, dict] = {}
 
     # ---- lifecycle -------------------------------------------------------
     def run(self):
@@ -522,6 +543,8 @@ class Hosp2MESAgent:
                               "missing": verdict.missing})
 
         self.trace.finish_run(success, verdict.detail, len(self.trace.steps), 0)
+        avg_latency = (self.total_llm_latency_ms / self.total_llm_calls
+                       if self.total_llm_calls else 0.0)
         self.evidence.finish(
             success=success, final_state=verdict.observed, detail=verdict.detail,
             gui_steps=self.gui_steps, failed_subgoal=self.failed_subgoal,
@@ -531,6 +554,16 @@ class Hosp2MESAgent:
             fallback_count=self.fallback_count,
             llm_model=getattr(self.policy._llm, "model", self.config.llm_model) or "",
             planner_source="deterministic",
+            total_llm_latency_ms=self.total_llm_latency_ms,
+            avg_llm_latency_ms=round(avg_latency, 1),
+            invalid_action_count=self.policy.invalid_action_count,
+            retry_count=self.retry_count,
+            llm_retry_count=self.policy.llm_retry_count,
+            premature_done_count=self.premature_done_count,
+            subgoals_total=len(plan.subgoals),
+            subgoals_completed=sum(1 for s in plan.subgoals
+                                   if self.memory.is_completed(s.id)),
+            per_subgoal_stats=self.per_subgoal_stats,
         )
         self.evidence.flush()
 
@@ -545,12 +578,15 @@ class Hosp2MESAgent:
     def _run_subgoal_loop(self, sg: Subgoal) -> bool:
         max_steps = self.task.max_steps or self.config.max_steps
         recent: list[dict] = []
+        sg_llm_calls = 0
+        sg_steps = 0
         for _ in range(max_steps):
             if self._subgoal_satisfied(sg):
                 self.memory.mark_completed(sg.id, evidence={"success_condition": sg.success_condition})
                 self._trace(subgoal=sg.id, observation=f"{sg.id} satisfied (read-back)",
                             reasoning=f"Subgoal '{sg.id}' verified via independent read-back",
                             action=f"verify:{sg.id}", result="completed")
+                self.per_subgoal_stats[sg.id] = {"steps": sg_steps, "llm_calls": sg_llm_calls}
                 return True
 
             obs = self.env.observe()
@@ -573,6 +609,7 @@ class Hosp2MESAgent:
                             reasoning="llm-strict policy failed (no fallback)",
                             action="fail:llm-strict", result=str(exc),
                             evidence=exc.decision.provenance())
+                self.per_subgoal_stats[sg.id] = {"steps": sg_steps, "llm_calls": sg_llm_calls}
                 return False
 
             if decision is None:
@@ -580,8 +617,11 @@ class Hosp2MESAgent:
 
             if decision.policy_source == "deepseek":
                 self.total_llm_calls += 1
+                sg_llm_calls += 1
             if decision.fallback_used:
                 self.fallback_count += 1
+            if decision.llm_latency_ms is not None:
+                self.total_llm_latency_ms += decision.llm_latency_ms
 
             before_path, _ = self.env.screenshot(f"{sg.id}-{self.gui_steps:02d}-before")
             action = self._to_action(decision)
@@ -591,7 +631,10 @@ class Hosp2MESAgent:
             state_changed = self._signature(obs) != self._signature(after)
 
             self.gui_steps += 1
+            sg_steps += 1
             result_str = "ok" if (result is None or result.ok) else f"FAIL: {result.detail}"
+            if result is not None and not result.ok:
+                self.retry_count += 1
             self.evidence.record(
                 step=self.gui_steps, subgoal=sg.id, url=obs.current_url,
                 observation_summary=obs.summary(),
@@ -599,9 +642,12 @@ class Hosp2MESAgent:
                 action=(action.summary() if action is not None else "done"),
                 action_target=decision.target,
                 action_result=result_str,
+                value=decision.value,
                 screenshot_before=before_path, screenshot_after=after_path,
                 state_changed=state_changed,
                 provenance=decision.provenance(),
+                goal=self.task.instruction,
+                memory_snapshot=self.memory.to_dict(),
             )
             self._trace(subgoal=sg.id, observation=obs.summary(),
                         reasoning=decision.rationale or "policy step",
@@ -622,11 +668,13 @@ class Hosp2MESAgent:
             if decision.action == "done":
                 # Policy claims done; the next loop iteration verifies via read-back.
                 if not self._subgoal_satisfied(sg):
+                    self.premature_done_count += 1
                     self.failure_reason = "policy claimed done but read-back disagrees"
                     continue
 
         self.memory.mark_failed(sg.id, reason="exhausted decision-loop steps")
         self.failure_reason = self.failure_reason or f"exhausted {max_steps} steps"
+        self.per_subgoal_stats[sg.id] = {"steps": sg_steps, "llm_calls": sg_llm_calls}
         return self._subgoal_satisfied(sg)
 
     # ---- helpers ---------------------------------------------------------
@@ -644,15 +692,21 @@ class Hosp2MESAgent:
 
     def _subgoal_satisfied(self, sg: Subgoal) -> bool:
         sid = sg.id
-        if sid == "create_material":
-            return self.env.get_material(self.ctx.material_code) is not None
-        if sid == "create_bom":
-            return self.env.get_bom(self.ctx.bom_code) is not None
-        if sid == "create_production_order":
-            return self.env.get_order(self.ctx.order_code) is not None
-        if sid == "execute_production":
-            order = self.env.get_order(self.ctx.order_code)
-            return bool(order and order.get("status") == "COMPLETED")
+        try:
+            if sid == "create_material":
+                return self.env.get_material(self.ctx.material_code) is not None
+            if sid == "create_bom":
+                return self.env.get_bom(self.ctx.bom_code) is not None
+            if sid == "create_production_order":
+                return self.env.get_order(self.ctx.order_code) is not None
+            if sid == "execute_production":
+                order = self.env.get_order(self.ctx.order_code)
+                return bool(order and order.get("status") == "COMPLETED")
+        except Exception:
+            # A transient read-back error (e.g. a momentary backend lock) must
+            # not crash the run; treat it as "not yet satisfied" and let the
+            # next loop iteration re-check. This is a generic robustness guard.
+            return False
         return False
 
     def _trace(self, *, subgoal, observation, reasoning, action, result, evidence=None):
@@ -689,6 +743,45 @@ _STAGE_ZH = {
     "packaging": "包装",
     "storage": "入库",
 }
+
+# Canonical production route + BOM version. These are generic MES business
+# constants (not task-specific): the same values apply to any product.
+_ROUTE = ">".join(PRODUCTION_STAGES)
+_BOM_VERSION = "1.0"
+
+# The production stages, in canonical order, with their Chinese UI labels.
+_PRODUCTION_STAGE_HINTS = [{"key": s, "label": _STAGE_ZH[s]} for s in PRODUCTION_STAGES]
+
+
+_LONG_HORIZON_SYSTEM_PROMPT = (
+    "You are a GUI agent controlling a manufacturing execution system (MES) web "
+    "app. Given the goal, the current subgoal, the business data to enter, the "
+    "structured progress memory and the current browser observation (URL, visible "
+    "text, interactive elements), return exactly ONE next action.\n\n"
+    "The app has a left sidebar (仪表盘 / 物品主文件 / BOM 管理 / 生产指令 / "
+    "生产执行 / ...). You may click a menu item, or use action \"navigate\" with "
+    "target \"/materials\", \"/boms\", \"/orders\" or \"/execution\".\n\n"
+    "Respond with ONLY a JSON object (no markdown, no surrounding text):\n"
+    '{"action":"<click|type|select|scroll|wait|back|navigate|done>", '
+    '"target":<string or {"within":{"role","text"},"role","name"}>, '
+    '"value":<optional>, "params":<optional dict>, '
+    '"rationale":"<short public rationale>"}\n\n'
+    "Rules:\n"
+    "- Use the exact accessible names from interactive_elements.\n"
+    '- Fill a field: {"action":"type","target":{"role":"textbox","name":"<label>"},"value":"<v>"}.\n'
+    '- Choose a dropdown: {"action":"select","target":{"role":"combobox","name":"<label>"},"value":"<option text or code>"}.\n'
+    '- Click a button: {"action":"click","target":{"role":"button","name":"<button text>"}}.\n'
+    '- Click a button inside a specific table row (e.g. a production stage), use a scoped target: '
+    '{"within":{"role":"row","text":"<row text like 称量>"},"role":"button","name":"完成"}.\n'
+    '- Wait for a condition: {"action":"wait","params":{"for":"<visible|hidden|enabled|disabled>","role":"<role>","name":"<name>","timeout":8000}}.\n'
+    "- When the current subgoal is already satisfied by the live state, return {\"action\":\"done\"}.\n\n"
+    "Workflow guidance (generic, by subgoal):\n"
+    "- create_material: navigate /materials, click 新建物料, fill 物料编码/物料名称/类型(select)/单位/规格, click 保存.\n"
+    "- create_bom: navigate /boms, click 新建 BOM, fill BOM 编码/产品/版本/工艺路线, click 保存; then click 物料明细 and, for each item in business_data.bom_materials, type 物料编码 and 数量 and click 添加.\n"
+    "- create_production_order: navigate /orders, click 新建指令, fill 指令号/产品/批次/数量, click 保存.\n"
+    "- execute_production: navigate /execution, select the order (select 选择指令 = business_data.order_code), then complete each stage in business_data.production_stages order by clicking 完成 within that stage's row (scoped target), waiting for it to become disabled before the next.\n\n"
+    "Never reveal internal chain-of-thought; rationale is a short public reason only."
+)
 
 
 def _target_name(target: Any) -> str:

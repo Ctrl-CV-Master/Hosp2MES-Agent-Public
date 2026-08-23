@@ -39,6 +39,7 @@ class StepEvidence:
     action: str
     action_target: str
     action_result: str
+    value: Any = None
     screenshot_before: str | None = None
     screenshot_after: str | None = None
     state_changed: bool = False
@@ -51,6 +52,9 @@ class StepEvidence:
     llm_parse_success: bool = False
     fallback_used: bool = False
     decision_rationale: str = ""
+    # long-horizon context (V1.2.2)
+    goal: str = ""
+    memory_snapshot: Any = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -75,7 +79,9 @@ class EvidenceWriter:
                action: str, action_target: str, action_result: str,
                screenshot_before: str | None, screenshot_after: str | None,
                state_changed: bool,
-               provenance: dict | None = None) -> StepEvidence:
+               provenance: dict | None = None,
+               goal: str = "", memory_snapshot: Any = None,
+               value: Any = None) -> StepEvidence:
         prov = provenance or {}
         ev = StepEvidence(
             step=step, subgoal=subgoal, url=url,
@@ -83,6 +89,7 @@ class EvidenceWriter:
             interactive_elements_summary=interactive_elements_summary,
             action=action, action_target=action_target,
             action_result=action_result,
+            value=value,
             screenshot_before=screenshot_before, screenshot_after=screenshot_after,
             state_changed=state_changed, timestamp=_now(),
             policy_source=prov.get("policy_source", ""),
@@ -92,6 +99,8 @@ class EvidenceWriter:
             llm_parse_success=bool(prov.get("llm_parse_success", False)),
             fallback_used=bool(prov.get("fallback_used", False)),
             decision_rationale=prov.get("decision_rationale", ""),
+            goal=goal,
+            memory_snapshot=memory_snapshot,
         )
         self._steps.append(ev)
         return ev
@@ -100,7 +109,13 @@ class EvidenceWriter:
                gui_steps: int, failed_subgoal: str = "", failure_reason: str = "",
                steps_reached: int = 0, policy_mode: str = "",
                total_llm_calls: int = 0, fallback_count: int = 0,
-               llm_model: str = "", planner_source: str = "") -> None:
+               llm_model: str = "", planner_source: str = "",
+               total_llm_latency_ms: int = 0, avg_llm_latency_ms: float = 0.0,
+               invalid_action_count: int = 0, retry_count: int = 0,
+               llm_retry_count: int = 0,
+               premature_done_count: int = 0,
+               subgoals_total: int = 0, subgoals_completed: int = 0,
+               per_subgoal_stats: dict | None = None) -> None:
         self._meta.update({
             "finished_at": _now(),
             "success": success,
@@ -115,6 +130,15 @@ class EvidenceWriter:
             "fallback_count": fallback_count,
             "llm_model": llm_model,
             "planner_source": planner_source,
+            "total_llm_latency_ms": total_llm_latency_ms,
+            "avg_llm_latency_ms": avg_llm_latency_ms,
+            "invalid_action_count": invalid_action_count,
+            "retry_count": retry_count,
+            "llm_retry_count": llm_retry_count,
+            "premature_done_count": premature_done_count,
+            "subgoals_total": subgoals_total,
+            "subgoals_completed": subgoals_completed,
+            "per_subgoal_stats": per_subgoal_stats or {},
         })
 
     def flush(self) -> str:
