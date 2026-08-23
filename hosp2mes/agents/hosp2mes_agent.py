@@ -49,6 +49,11 @@ from hosp2mes.memory.progress_memory import ProgressMemory
 from hosp2mes.observation.browser_env import BrowserEnv
 from hosp2mes.observation.browser_observation import BrowserObservation
 from hosp2mes.planner.planner import Plan, Planner, Subgoal
+from hosp2mes.recovery.recovery import RecoveryEngine, RecoveryResult
+from hosp2mes.recovery.recovery_trace import RecoveryTrace, write_recovery_trace
+from hosp2mes.state.business_state import expected_state_for_subgoal
+from hosp2mes.state.state_diff import diff
+from hosp2mes.state.state_reader import StateReader
 from hosp2mes.trace.trace import TraceRecorder
 from hosp2mes.verifier.verifier import EvidenceVerifier
 
@@ -488,6 +493,13 @@ class Hosp2MESAgent:
         if getattr(env, "artifacts_dir", None) is None:
             env.artifacts_dir = self.evidence.run_dir
         self.policy = ActionPolicy(config, self.ctx)
+        self.state_reader = StateReader(
+            env, self.ctx.material_code, self.ctx.bom_code, self.ctx.order_code
+        )
+        self.recovery = RecoveryEngine(max_attempts=getattr(config, "max_recovery_attempts", 3) or 3)
+        # Generic subgoal-completion observers (used by the test harness for
+        # fault injection; the agent's decision logic is completely unaware).
+        self.on_subgoal_completed: list = []
         self.gui_steps = 0
         self.failed_subgoal = ""
         self.failure_reason = ""
@@ -498,6 +510,9 @@ class Hosp2MESAgent:
         self.premature_done_count = 0
         self.total_llm_latency_ms = 0
         self.per_subgoal_stats: dict[str, dict] = {}
+        self._last_recent: list[dict] = []
+        self._episode_pending = False
+        self._recovery_start_step = 0
 
     # ---- lifecycle -------------------------------------------------------
     def run(self):
@@ -524,14 +539,39 @@ class Hosp2MESAgent:
                     evidence={"plan": plan.to_dict(),
                               "planner_source": "deterministic"})
 
-        for sg_id in plan.ordered_ids():
+        # Work queue. On failure, recovery re-plans the *remaining* subgoals
+        # (preserve completed / reactivate affected / invalidate downstream) and
+        # the queue is rebuilt — never a full restart from SG1.
+        queue = plan.ordered_ids()
+        while queue:
+            sg_id = queue[0]
             self.steps_reached = self.gui_steps
             self.memory.set_current(sg_id)
             sg = subgoal_by_id.get(sg_id, Subgoal(id=sg_id))
+
+            if self._subgoal_satisfied(sg):
+                self.memory.mark_completed(sg_id, evidence={"success_condition": sg.success_condition})
+                self.per_subgoal_stats.setdefault(sg_id, {"steps": 0, "llm_calls": 0})
+                self._mark_episode_success_if_pending()
+                queue.pop(0)
+                continue
+
             ok = self._run_subgoal_loop(sg)
-            if not ok:
+            if ok:
+                self._mark_episode_success_if_pending()
+                queue.pop(0)
+                continue
+
+            # Failure -> adaptive recovery (state diff -> diagnosis -> local replan).
+            if self._episode_pending:
+                self.recovery.finish_episode(False)
+                self._episode_pending = False
+            new_queue = self._recover(sg_id, plan)
+            if new_queue is None:
                 self.failed_subgoal = sg_id
                 break
+            queue = new_queue
+            self._episode_pending = True
 
         verdict = self.verifier.verify(self.env, self.task)
         success = verdict.passed and self.memory.all_done()
@@ -542,7 +582,9 @@ class Hosp2MESAgent:
                     evidence={"expected": verdict.expected, "observed": verdict.observed,
                               "missing": verdict.missing})
 
-        self.trace.finish_run(success, verdict.detail, len(self.trace.steps), 0)
+        self._finalize_recovery_traces(verdict)
+        self.trace.finish_run(success, verdict.detail, len(self.trace.steps),
+                              self.recovery.recovery_count)
         avg_latency = (self.total_llm_latency_ms / self.total_llm_calls
                        if self.total_llm_calls else 0.0)
         self.evidence.finish(
@@ -564,16 +606,94 @@ class Hosp2MESAgent:
             subgoals_completed=sum(1 for s in plan.subgoals
                                    if self.memory.is_completed(s.id)),
             per_subgoal_stats=self.per_subgoal_stats,
+            recovery_metrics=self.recovery.to_metrics(),
         )
         self.evidence.flush()
 
         report = Evaluator().evaluate(
             task_id=self.task.task_id, memory=self.memory, trace=self.trace,
-            verifier_result=verdict, recovery_count=0,
+            verifier_result=verdict, recovery_count=self.recovery.recovery_count,
             premature_done=self.premature_done_count,
             mode=self.config.agent_mode,
         )
         return report, self.trace, self.memory
+
+    # ---- recovery --------------------------------------------------------
+    def _recover(self, failed_sg_id: str, plan: Plan) -> list[str] | None:
+        """Run one recovery episode; return the new remaining work (or None)."""
+        if not self.recovery.can_recover():
+            self.recovery.finish_episode(False)
+            return None
+        result = self.recovery.recover(
+            failed_subgoal=failed_sg_id, plan=plan,
+            state_reader=self.state_reader,
+            recent_actions=self._last_recent,
+            premature_done=(self.failure_reason or "").startswith("policy claimed done"),
+        )
+        if not result.recoverable:
+            self.failure_reason = self.failure_reason or (
+                f"recovery not recoverable: {result.detail}")
+            return None
+
+        # Record the recovery trace (repair_steps + verification filled at the end).
+        self._recovery_start_step = self.gui_steps
+        trace = RecoveryTrace(
+            trigger_step=self.gui_steps,
+            failed_subgoal=failed_sg_id,
+            expected_state=result.expected_state,
+            observed_state=result.observed_state,
+            state_diff=result.state_diff.to_dict() if result.state_diff else {},
+            diagnosis=result.diagnosis.to_dict() if result.diagnosis else {},
+            repair_plan=result.repair_plan.to_dict() if result.repair_plan else {},
+            resume_subgoal=(result.repair_plan.resume_subgoal if result.repair_plan else ""),
+        )
+        self.recovery.traces.append(trace)
+        self._trace(subgoal=failed_sg_id,
+                    observation=f"recovery: state_diff={result.state_diff.to_dict() if result.state_diff else {}}",
+                    reasoning=(result.diagnosis.root_cause_summary if result.diagnosis else "recovery"),
+                    action="recover", result=f"resume={trace.resume_subgoal}",
+                    evidence={"recovery": trace.to_dict()})
+        # Inject recovery_history into progress memory (kept small / bounded).
+        self.memory.evidence.setdefault("recovery_history", [])
+        self.memory.evidence["recovery_history"].append({
+            "timestamp": trace.to_dict().get("trigger_step", ""),
+            "failed_subgoal": failed_sg_id,
+            "diagnosis": trace.diagnosis,
+            "state_diff": trace.state_diff,
+            "repair_subgoal": trace.resume_subgoal,
+            "attempt": self.recovery.recovery_count,
+            "result": "PLANNED",
+        })
+        return result.remaining_ids
+
+    def _mark_episode_success_if_pending(self) -> None:
+        if self._episode_pending:
+            self.recovery.finish_episode(True)
+            self._episode_pending = False
+
+    def _finalize_recovery_traces(self, verdict) -> None:
+        """Fill repair_steps + verification_result and write recovery-XXX.json."""
+        steps = self.evidence.steps
+        for i, trace in enumerate(self.recovery.traces):
+            start = trace.trigger_step
+            # End of this episode = start of the next one, or the last step.
+            end = self.gui_steps
+            if i + 1 < len(self.recovery.traces):
+                end = self.recovery.traces[i + 1].trigger_step
+            trace.repair_steps = [
+                {"step": s.step, "subgoal": s.subgoal, "action": s.action,
+                 "action_result": s.action_result, "policy_source": s.policy_source}
+                for s in steps if start < s.step <= end
+            ]
+            trace.verification_result = {
+                "passed": verdict.passed,
+                "observed": verdict.observed,
+                "missing": verdict.missing,
+            }
+            try:
+                write_recovery_trace(self.evidence.run_dir, trace, i + 1)
+            except Exception:
+                pass
 
     # ---- per-subgoal decision loop ---------------------------------------
     def _run_subgoal_loop(self, sg: Subgoal) -> bool:
@@ -584,10 +704,12 @@ class Hosp2MESAgent:
         for _ in range(max_steps):
             if self._subgoal_satisfied(sg):
                 self.memory.mark_completed(sg.id, evidence={"success_condition": sg.success_condition})
+                self._notify_subgoal_completed(sg.id)
                 self._trace(subgoal=sg.id, observation=f"{sg.id} satisfied (read-back)",
                             reasoning=f"Subgoal '{sg.id}' verified via independent read-back",
                             action=f"verify:{sg.id}", result="completed")
                 self.per_subgoal_stats[sg.id] = {"steps": sg_steps, "llm_calls": sg_llm_calls}
+                self._last_recent = list(recent)
                 return True
 
             obs = self.env.observe()
@@ -611,6 +733,7 @@ class Hosp2MESAgent:
                             action="fail:llm-strict", result=str(exc),
                             evidence=exc.decision.provenance())
                 self.per_subgoal_stats[sg.id] = {"steps": sg_steps, "llm_calls": sg_llm_calls}
+                self._last_recent = list(recent)
                 return False
 
             if decision is None:
@@ -676,6 +799,7 @@ class Hosp2MESAgent:
         self.memory.mark_failed(sg.id, reason="exhausted decision-loop steps")
         self.failure_reason = self.failure_reason or f"exhausted {max_steps} steps"
         self.per_subgoal_stats[sg.id] = {"steps": sg_steps, "llm_calls": sg_llm_calls}
+        self._last_recent = list(recent)
         return self._subgoal_satisfied(sg)
 
     # ---- helpers ---------------------------------------------------------
@@ -692,23 +816,28 @@ class Hosp2MESAgent:
         )
 
     def _subgoal_satisfied(self, sg: Subgoal) -> bool:
-        sid = sg.id
+        """A subgoal is satisfied by the *live* business state (state diff), not
+        by "having clicked the button" and never by the agent's own memory."""
+        expected = expected_state_for_subgoal(sg.id)
+        if not expected:
+            return False
         try:
-            if sid == "create_material":
-                return self.env.get_material(self.ctx.material_code) is not None
-            if sid == "create_bom":
-                return self.env.get_bom(self.ctx.bom_code) is not None
-            if sid == "create_production_order":
-                return self.env.get_order(self.ctx.order_code) is not None
-            if sid == "execute_production":
-                order = self.env.get_order(self.ctx.order_code)
-                return bool(order and order.get("status") == "COMPLETED")
+            observed = self.state_reader.read()
+            return diff(expected, observed.to_dict()).is_clean
         except Exception:
             # A transient read-back error (e.g. a momentary backend lock) must
             # not crash the run; treat it as "not yet satisfied" and let the
             # next loop iteration re-check. This is a generic robustness guard.
             return False
-        return False
+
+    def _notify_subgoal_completed(self, sg_id: str) -> None:
+        """Fire generic subgoal-completion observers (e.g. a test-harness fault
+        injector). The agent's decision logic is unaware of any observer."""
+        for cb in list(self.on_subgoal_completed):
+            try:
+                cb(sg_id)
+            except Exception:
+                pass
 
     def _trace(self, *, subgoal, observation, reasoning, action, result, evidence=None):
         self.trace.record(

@@ -115,7 +115,8 @@ class EvidenceWriter:
                llm_retry_count: int = 0,
                premature_done_count: int = 0,
                subgoals_total: int = 0, subgoals_completed: int = 0,
-               per_subgoal_stats: dict | None = None) -> None:
+               per_subgoal_stats: dict | None = None,
+               recovery_metrics: dict | None = None) -> None:
         self._meta.update({
             "finished_at": _now(),
             "success": success,
@@ -139,6 +140,7 @@ class EvidenceWriter:
             "subgoals_total": subgoals_total,
             "subgoals_completed": subgoals_completed,
             "per_subgoal_stats": per_subgoal_stats or {},
+            "recovery_metrics": recovery_metrics or {},
         })
 
     def flush(self) -> str:
