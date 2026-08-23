@@ -6,11 +6,19 @@
 
 ## Current Version
 
-**V1.3.0 — Adaptive Recovery + State-Diff Local Replanning (final core algorithm version)**
+**V1.3.1 — Portfolio cleanup + metrics correction + public evidence freeze**
 
-## Real LLM Recovery Hero verification (V1.3, honest)
+`TECHNICAL_CORE_STATUS = FROZEN`
 
-- `REAL_LLM_RECOVERY_HERO = PASS` — run_id `MES-DEMO-RECOVERY-001-20260823T035901Z`
+V1.3.1 freezes the technical core of Hosp2MES-Agent-Public. Future changes
+should focus on portfolio presentation, documentation, CI, demo assets and bug
+fixes rather than new agent algorithms. (Do not plan V1.4 Planner / V1.5 Memory /
+V1.6 Multi-Agent / V2.0 Tool-Agent unless future real research produces a clear
+requirement.)
+
+## Real LLM Recovery Hero verification (V1.3.1, honest)
+
+- `REAL_LLM_RECOVERY_HERO = PASS` — run_id `MES-DEMO-RECOVERY-001-20260823T042516Z`
   (clean final run, `--agent hosp2mes --policy llm-strict`, `planner=deterministic`).
 - Fault `FAULT-BOM-001` (`discard_state_change`, once) was injected by the
   **test harness** via the agent's generic subgoal-completion observer — the
@@ -22,14 +30,34 @@
   locally re-planned (`preserve create_material`, `reactivate create_bom`,
   `invalidate create_bom/create_production_order/execute_production`,
   `resume_from create_bom`), repaired the BOM through the GUI and resumed.
-- Metrics: `gui_steps=41`, `total_llm_calls=41`, **all** `policy_source=deepseek`,
-  `fallback_count=0`, `premature_done_count=3` (bounded premature-DONE budget
-  triggered recovery), `recovery_count=1`, `recovery_success_count=1`,
-  `recovery_failure_count=0`, `total_recovery_steps=15`,
-  `reexecuted_completed_subgoals=0`, `local_replan_count=1`, `state_diff_count=1`.
+- Metrics: `gui_steps=39`, `total_llm_calls=39`, **all** `policy_source=deepseek`,
+  `fallback_count=0`, `premature_done_count=3`, `recovery_count=1`,
+  `recovery_success_count=1`, `recovery_failure_count=0`,
+  `total_recovery_steps=7` (repair episode only, `repair_start_step=24` →
+  `repair_end_step=31`), `reexecuted_completed_subgoals=0`,
+  `local_replan_count=1`, `state_diff_count=1`.
+- `subgoal_execution_counts`: `create_material=1`, `create_bom=2`,
+  `create_production_order=1`, `execute_production=1` (real execution counters).
 - Independent verification: `material_exists=true`, `bom_exists=true`,
   `production_order_status=COMPLETED`, `storage_status=STORED`. The material
   subgoal was **never** re-executed (local recovery, not a restart).
+
+## V1.3.1 — Metrics correction + evidence freeze
+
+- [x] **`reexecuted_completed_subgoals` is now a real measurement** — driven by
+  `subgoal_execution_counts` (incremented only when a subgoal's decision loop is
+  actually entered), snapshotted at recovery time for the preserved subgoals,
+  and compared after the run. No longer derived from queue-set algebra.
+- [x] **`total_recovery_steps` is bounded to the repair episode** — the recovery
+  trace now records `repair_start_step` / `repair_end_step` / `repair_step_count`
+  / `repair_verified` / `resume_step`; only steps in
+  `(repair_start_step, repair_end_step]` count, so resumed Order / Execution are
+  excluded.
+- [x] **Public evidence** — `examples/evidence/` (sanitized) + `scripts/export_evidence.py`.
+- [x] **Regression tests** — `test_subgoal_execution_counts_and_reexecuted` and
+  `test_recovery_steps_bound_to_repair_episode`. 54 tests total, all green.
+
+
 
 ## V1.3 — Adaptive Recovery (what was built)
 
@@ -62,7 +90,7 @@
 - [x] **Regression tests** — `tests/agent/test_recovery.py`: state diff, missing
   BOM repair plan, stage-interruption repair plan, retry budget,
   reexecuted_completed_subgoals==0, premature-DONE diagnosis, full local-replan
-  E2E (scripted policy + fault injector). 52 tests total, all green.
+  E2E (scripted policy + fault injector). 54 tests total, all green.
 
 > State-diff-based local recovery demonstrated in synthetic MES fault scenarios
 > (not a general-purpose self-healing industrial agent claim).

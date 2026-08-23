@@ -134,7 +134,17 @@ python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --agent s3   # 需 
 | Hosp2MESAgent DeepSeek Recovery Hero(`llm-strict`) | ✅ PASS | `MES-DEMO-RECOVERY-001`(见下文 Adaptive Recovery):BOM 故障注入 → state diff → 诊断 → 局部重规划 → DeepSeek GUI 修复 → 恢复通过,`fallback=0`、`REEXECUTED_COMPLETED_SUBGOALS=0` |
 | Agent S3 | adapter ready / runtime not yet evaluated | 真实 import/construct 已验证;真实 `predict()` 需要 LLM Key + UI-TARS grounding 端点(本环境缺失) |
 
-> Hero 真实证据见 `artifacts/runs/MES-DEMO-003-20260823T011158Z/`(31 步 `steps.json` + `summary.json` + 31×before/after 截图;每步含 `policy_source`/`llm_model`/`llm_latency_ms`/`fallback_used`/`decision_rationale`/`memory_snapshot`)。上下文审计见 [LONG_HORIZON_CONTEXT_AUDIT.md](LONG_HORIZON_CONTEXT_AUDIT.md)。
+### Reproducible Evidence
+
+- Long-Horizon Hero: [`examples/evidence/long_horizon_hero/`](examples/evidence/long_horizon_hero/)
+- Adaptive Recovery Hero: [`examples/evidence/recovery_hero/`](examples/evidence/recovery_hero/)
+
+> Full artifacts are generated locally under `artifacts/runs/` and are
+> intentionally excluded from Git (each run produces dozens of screenshots).
+> The curated, sanitized public evidence above is exported from those real runs
+> via `scripts/export_evidence.py`.
+
+上下文审计见 [LONG_HORIZON_CONTEXT_AUDIT.md](LONG_HORIZON_CONTEXT_AUDIT.md)。
 
 ---
 
@@ -218,8 +228,9 @@ cd <repo-root>
 - api 模式完整 E2E(临时后端 + Agent 完成 DEMO 任务)
 - **Browser 模式**:`test_browser_observation`、`test_browser_executor`、`test_gui_material_creation_e2e`、`test_gui_production_execution`(真实启动页面并通过 Playwright 操作,含 scoped semantic target 与重渲染后 locator 重新获取)
 - **Agent policy**:`test_agent_policy`(单步动作决策、页面变体自主性、Hosp2MESAgent 完成 GUI-001)、`test_agent_s3_adapter`(Agent S3 适配器的诚实可用性/映射)
+- **Adaptive recovery**:`test_recovery`(state diff、依赖感知局部重规划、重试预算、`subgoal_execution_counts` / `reexecuted_completed_subgoals`、recovery episode 边界)、`test_premature_done_metric`(premature-DONE 计数进入 Evaluator)
 
-当前共 **42 个测试**全部通过。
+当前共 **54 个测试**全部通过。
 
 ---
 
