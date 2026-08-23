@@ -99,8 +99,13 @@ def live_server():
 def playwright_browser():
     """A single shared headless Chromium for browser-mode tests."""
     sync_playwright = pytest.importorskip("playwright.sync_api").sync_playwright
+    # GitHub Actions and other containerized CI may restrict the Chromium
+    # sandbox (unprivileged user namespaces). Apply --no-sandbox ONLY in CI;
+    # local runs keep the sandbox enabled. This is a test-infrastructure
+    # portability fix, not an agent-behaviour change.
+    launch_args = ["--no-sandbox"] if os.environ.get("CI") else []
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=True, args=launch_args)
         yield browser
         browser.close()
 
