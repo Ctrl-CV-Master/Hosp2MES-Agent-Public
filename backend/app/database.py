@@ -6,8 +6,10 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.config import settings
 
-# SQLite needs check_same_thread disabled for FastAPI's threaded requests.
-connect_args = {"check_same_thread": False}
+# SQLite needs check_same_thread disabled for FastAPI's threaded requests, and
+# a lock timeout so concurrent read/write requests wait instead of erroring
+# with "database is locked" (which surfaces as HTTP 500 on read-back).
+connect_args = {"check_same_thread": False, "timeout": 30}
 engine = create_engine(settings.database_url, connect_args=connect_args)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
