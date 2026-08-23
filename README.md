@@ -1,379 +1,267 @@
-# Hosp2MES-Agent-Public
+# Hosp2MES-Agent
 
-> 一个面向制造执行系统(MES)的长周期 GUI Agent 公开演示项目。
+> A long-horizon GUI agent for Manufacturing Execution Systems (MES).
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
-[![Vue 3](https://img.shields.io/badge/frontend-Vue%203%20%2B%20TypeScript-success)](https://vuejs.org/)
-[![FastAPI](https://img.shields.io/badge/backend-FastAPI-green)](https://fastapi.tiangolo.com/)
-[![Playwright](https://img.shields.io/badge/GUI-Playwright-orange.svg)](https://playwright.dev/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+Hosp2MES-Agent enables LLM agents to autonomously execute multi-page
+manufacturing workflows through real browser GUIs, with structured progress
+memory, evidence-based verification and state-diff local recovery.
 
-**Hosp2MES** 演示了如何让 Agent 在 MES 业务系统中完成端到端长周期任务:创建物料主文件 → 配置 BOM 与工艺路线 → 下达生产指令 → 完成七阶段生产 → 入库。项目包含一个可独立运行的 Mock MES 后端、一个 Vue 3 可视化控制台、一个模块化 Agent 框架,以及公开基准任务。
+![Hero demo](assets/demo/hosp2mes-agent-demo.gif)
 
-**关键点**:Agent 的公开 Hero Demo 支持**两种执行模式**——一种通过 REST API 的确定性测试后端,一种通过真实浏览器 GUI(Playwright)驱动 Vue 页面完成观察、定位、点击、输入、选择与等待。全部数据均为虚构演示数据,不含任何真实医院或工厂信息。
+[![CI](https://img.shields.io/badge/CI-passing-16a34a?logo=githubactions&logoColor=white)](../../actions)
+![Tests](https://img.shields.io/badge/tests-54%20passing-2563eb)
+![Python](https://img.shields.io/badge/python-3.10%20%7C%203.12-3776ab)
+![License](https://img.shields.io/badge/license-MIT-0d9488)
 
-![Dashboard](assets/screenshots/dashboard.png)
+## ✨ Key Features
 
----
+### 🏭 Long-Horizon GUI Execution
 
-## ✨ 核心特性
+`Material → BOM → Production Order → 7 Production Stages → Storage` — full
+multi-page Vue workflow driven through real Chromium (Playwright), not a
+mocked API.
 
-- **长周期规划(Long-Horizon Planning)**:将高层目标自动分解为可执行子目标。
-- **结构化进度记忆(Structured Progress Memory)**:显式记录已完成/待执行/失败子目标,不依赖对话历史。
-- **证据门控验证(Evidence-Gated Verification)**:每步执行后读取真实后端状态验证,不盲信 Agent 自评。
-- **局部恢复(Local Recovery)**:遇到注入异常时重试/补偿,而不是重启整段任务。
-- **Agent Trace 与 Monitor**:每步动作、结果、推理摘要实时发布到前端。
-- **MockLLM 回退**:无需 API Key 即可运行完整 E2E 评测。
-- **真实浏览器 GUI 执行(BrowserEnv)**:基于 Playwright 打开 Vue Mock MES,通过语义定位(role + accessible name / label / text)执行业务操作,并输出 before/after 截图与逐步证据。
-- **公开基准**:MES-DEMO-001/002/003 + MES-DEMO-GUI-001,覆盖简单创建、标准流程、长周期+恢复、真实 GUI 场景。
+### 🧠 Real LLM Decision Loop
 
----
+`Observation → DeepSeek → ONE GUI Action → Execute → Observe again`. Each step
+carries a `policy_source` (deterministic / deepseek), `llm_model`,
+`llm_latency_ms` and `decision_rationale`. No pre-written action lists.
 
-## 🧭 两种执行模式
+### 🛡️ Evidence-Gated Completion
 
-| 维度 | `ApiEnv`(api 模式) | `BrowserEnv`(browser 模式) |
-|------|---------------------|-----------------------------|
-| 执行方式 | 通过 Mock MES REST API 调用 | 真实打开 Vue 页面,Playwright GUI 操作 |
-| 观察来源 | REST 返回的业务数据 | 网页 DOM / 语义信息 + 截图 |
-| 用途 | **确定性测试 / CI backend** | **真实 GUI 执行(Hero Demo)** |
-| 需要浏览器 | 否 | 是(`playwright install chromium`) |
-| 业务状态验证 | 读取后端状态 | **独立** 只读 ApiEnv 回读(子目标完成检查 + 最终业务状态验证) |
+`Agent DONE ≠ Task Success`. The agent only passes when the independent
+read-only verifier (REST) confirms the live business state matches the
+expected final state.
 
-> ⚠️ **ApiEnv 模式不等于"完整 GUI Agent"。** 它是确定性测试与 CI 的后端。真正打开页面、观察、点击、输入、选择的 GUI Agent 能力由 `BrowserEnv` + `BrowserExecutor` 提供。
+### 🔁 Adaptive Recovery
 
-> REST API 不参与 GUI 动作决策，也不修改 MES 业务状态，仅作为独立只读验证器，用于子目标完成检查和最终业务状态验证。(REST API does not participate in GUI action decisions or business-state mutation. It is used only as an independent read-only verifier for subgoal completion checks and final-state verification.)
+`State diff → Failure diagnosis → Dependency-aware local replan → GUI repair
+→ Independent verification → Resume`. A real BOM-discard fault is detected
+and repaired without restarting the already-completed material subgoal.
 
----
+## 🤔 Why Hosp2MES
 
-## 🚀 快速开始(从全新 clone 开始,无需任何预设本地路径)
+### Conventional GUI Agent
+
+```text
+Task
+  ↓
+Observe
+  ↓
+Act
+  ↓
+LLM says DONE
+```
+
+Problems:
+- long task progress is lost
+- premature DONE goes undetected
+- any failure forces a restart
+- difficult to verify actual business completion
+
+### Hosp2MES
+
+```text
+Task
+  ↓
+Plan (dependency-aware subgoals)
+  ↓
+Structured Progress Memory
+  ↓
+Observe → Decide → Act  (one action per step)
+  ↓
+Independent Verification
+  ↓
+Local Recovery  (state diff → replan → resume)
+```
+
+## 🏗️ Architecture
+
+![Architecture](assets/architecture.png)
+
+A short, dependency-aware plan feeds a **Hosp2MESAgent** loop that
+combines a **Browser Observation** (DOM + accessibility + screenshot), a
+**DeepSeek Action Policy** (one structured action per step) and a
+**BrowserExecutor** (semantic locators, no XPath / fixed coordinates).
+The agent drives a **Mock MES** (Vue 3 + FastAPI + SQLite). Every step
+passes through an **Independent Verifier** (read-only REST). Failures go
+through **Adaptive Recovery** (V1.3) without a full restart.
+
+> REST API does not participate in GUI action decisions or
+> business-state mutation; it is used only as an independent read-only
+> verifier for subgoal-completion checks and final-state verification.
+
+## ✅ Real Validation
+
+### Long-Horizon Hero (`MES-DEMO-003`)
+
+| metric | value |
+|---|---|
+| policy | `llm-strict` (real DeepSeek) |
+| GUI steps | 31 |
+| LLM calls | 31 (all `policy_source=deepseek`) |
+| fallback | **0** |
+| subgoals | 4 / 4 |
+| final state | `material_exists=true`, `bom_exists=true`, `production_order_status=COMPLETED`, `storage_status=STORED` |
+
+### Adaptive Recovery Hero (`MES-DEMO-RECOVERY-001`)
+
+| metric | value |
+|---|---|
+| fault | `FAULT-BOM-001` (BOM discarded after creation, `discard_state_change` once, harness-injected — agent unaware) |
+| policy | `llm-strict` (real DeepSeek) |
+| diagnosis | `MISSING_PREREQUISITE` (`bom.exists` expected true / actual false) |
+| local replan | `preserve create_material` · `reactivate create_bom` · `invalidate downstream` · `resume_from create_bom` |
+| repair steps | 7 (only the repair episode) |
+| `subgoal_execution_counts` | `{create_material:1, create_bom:2, create_production_order:1, execute_production:1}` |
+| reexecuted completed subgoals | **0** (material was *never* re-run) |
+| final state | all verified |
+
+### Tests
+
+**54 tests, all passing** — unit, GUI E2E, LLM policy modes, adaptive
+recovery (state diff / diagnosis / dependency-aware replanning / real
+execution counters / repair-episode boundaries), and premature-DONE metrics.
+
+## 🚀 Quick Start
+
+Requires **Python 3.10+**, **Node 20+**, and a single `playwright install
+chromium` step. No LLM key is required for the deterministic smoke run;
+DeepSeek runs need `LLM_API_KEY` in a local `.env` (git-ignored).
 
 ```bash
-# 1. 克隆
+# 1. clone
 git clone https://github.com/Ctrl-CV-Master/Hosp2MES-Agent-Public.git
 cd Hosp2MES-Agent-Public
 
-# 2. 创建虚拟环境并安装后端 + Agent 依赖(含 Playwright)
+# 2. python env + backend deps
 python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# macOS / Linux:
-# source .venv/bin/activate
+.venv/Scripts/python.exe -m pip install -r backend/requirements.txt
+.venv/Scripts/python.exe -m pip install playwright pytest
+.venv/Scripts/python.exe -m playwright install chromium
 
-pip install -r backend/requirements.txt
-playwright install chromium
+# 3. frontend build (required for browser E2E)
+cd frontend && npm ci && npm run build && cd ..
 
-# 3. 安装并启动前端
-cd frontend
-npm install
-npm run dev
-# 打开 http://127.0.0.1:5173
+# 4. deterministic smoke (no LLM key)
+.venv/Scripts/python.exe -m pytest tests/ -q
+PYTHONPATH=.:backend .venv/Scripts/python.exe benchmark/e2e_probe.py
+
+# 5. (optional) real DeepSeek Hero — needs LLM_API_KEY in .env
+.venv/Scripts/python.exe run_llm_recovery.py --policy llm-strict
 ```
 
-另开一个终端启动后端:
+## 🤖 Agent Modes
+
+| Agent | File | Decision |
+|---|---|---|
+| **SemanticSkillAgent** (skill baseline) | `hosp2mes/agents/skill_agent.py` | one **pre-written** semantic action list per subgoal (deterministic baseline) |
+| **Hosp2MESAgent** (LLM action policy) | `hosp2mes/agents/hosp2mes_agent.py` | **one action per step** — `GOAL+SUBGOAL+MEMORY+OBSERVATION → policy → 1 action`. Three policy modes: `deterministic` / `llm` / `llm-strict` |
+| **AgentS3Adapter** (external) | `hosp2mes/agents/agent_s3_adapter.py` | bridges the official [Agent S3](https://github.com/simular-ai/Agent-S) (Apache-2.0, `gui-agents`). **Adapter ready — runtime not yet evaluated** (needs LLM key + UI-TARS grounding endpoint) |
+
+`Hosp2MESAgent` policy output is strictly structured and public-safe:
+
+```json
+{ "action": "click", "target": {"within": {"role": "row", "text": "称量"},
+                              "role": "button", "name": "完成"},
+  "value": null, "rationale": "short public rationale" }
+```
+
+No private chain-of-thought is emitted or stored.
+
+## 📊 Benchmark
 
 ```bash
-# 回到仓库根目录(虚拟环境已激活)
-cd backend
-uvicorn app.main:app --reload --port 8000
+PYTHONPATH=.:backend .venv/Scripts/python.exe benchmark/e2e_probe.py
 ```
 
-后端 Swagger UI: `http://127.0.0.1:8000/docs`
+| task | mode | result | note |
+|---|---|---|---|
+| `MES-DEMO-001` | api | ✅ | create material |
+| `MES-DEMO-002` | api | ✅ | BOM + production order |
+| `MES-DEMO-003` (Hero) | api | ✅ | full workflow + local recovery (recovery=1) |
+| `MES-DEMO-GUI-001` | browser | ✅ | material via Playwright |
+| `MES-DEMO-003` (Hero) | browser | ✅ | Material→BOM→Order→7 stages→Storage via Playwright |
+| `MES-DEMO-RECOVERY-001` | browser | ✅ | fault-injected adaptive recovery, DeepSeek `llm-strict` |
 
-### 运行 Agent(命令行)
+## 📂 Public Evidence
 
-**api 模式(确定性测试 / CI,默认):**
-
-```bash
-# 在仓库根目录
-PYTHONPATH=.:backend python -m hosp2mes.run --task MES-DEMO-001 --env api
-```
-
-**browser 模式(真实 GUI,需先启动前端 + 后端):**
-
-```bash
-# 有头浏览器,可直接观察 Agent 操作页面
-python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --headless false
-
-# 无头(CI)
-python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --headless true
-
-# 选择 browser 模式的 Agent(默认 skill 基线)
-python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --agent hosp2mes --policy deterministic
-python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --agent hosp2mes --policy llm
-python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --agent hosp2mes --policy llm-strict  # 需 .env 真实 DeepSeek key
-python -m hosp2mes.run --task MES-DEMO-GUI-001 --env browser --agent s3   # 需 gui-agents + 凭据
-```
-
-可用任务:`MES-DEMO-001`、`MES-DEMO-002`、`MES-DEMO-003`、`MES-DEMO-GUI-001`。
-
-> 浏览器模式会在 `artifacts/runs/<run_id>/` 输出 `steps.json`(逐步 GUI 动作 + 观察摘要)、`summary.json`(最终验证结果与诚实状态)以及每一步的 before/after PNG 截图。
-
----
-
-## 🤖 三种 Agent
-
-| Agent | 文件 | 决策方式 |
-|-------|------|----------|
-| **SemanticSkillAgent**(Skill 基线) | `hosp2mes/agents/skill_agent.py` | 每个 subgoal 一段**预写**的语义 GUI 动作序列(确定性 baseline) |
-| **Hosp2MESAgent**(LLM action policy) | `hosp2mes/agents/hosp2mes_agent.py` | **每轮只预测一个** next action:`GOAL+SUBGOAL+MEMORY+OBSERVATION → policy → 一个动作 → 执行 → 再观察` |
-| **Agent S3**(外部框架) | `hosp2mes/agents/agent_s3_adapter.py` | 官方 [Agent S3](https://github.com/simular-ai/Agent-S)(Apache-2.0,`gui-agents`)的适配器 |
-
-- `SemanticSkillAgent` 是 V1.1 `BrowserAgent` 的重命名定位,作为确定性 GUI baseline 保留(`BrowserAgent` 仍是兼容别名)。
-- `Hosp2MESAgent` 是真正的 decision loop,不一次输出整段动作序列;策略输出严格结构化 `{action, target, value, rationale}`,不含私有 chain-of-thought。策略有三种 `--policy` 模式:`deterministic`(总是 fallback)、`llm`(真实 LLM,失败允许 fallback 但每步记录 provenance)、`llm-strict`(只允许真实 LLM,任何失败立即 FAIL,严禁 fallback)。
-- `AgentS3Adapter` 桥接真实 `AgentS3.predict()`(screenshot 观察 → 预测动作)。真实运行需要 `pip install gui-agents`(Python ≤3.12)+ LLM API Key + UI-TARS grounding 模型端点;本仓库**不伪造**其成功结果。
-
-### 验证状态(真实结果,非笼统声明)
-
-| Agent / Policy | 状态 | 依据 |
-|----------------|------|------|
-| SemanticSkillAgent(Skill 基线) | ✅ PASS | Hero 全流程 GUI 通过,独立验证 COMPLETED/STORED |
-| Hosp2MESAgent `deterministic` | ✅ PASS | `test_agent_policy` + GUI-001 通过 |
-| Hosp2MESAgent DeepSeek GUI-001(`llm-strict`) | ✅ PASS | `MES-DEMO-GUI-001-20260822T151624Z`:8 步全 `deepseek`、`fallback=0`、`material_exists=true` |
-| Hosp2MESAgent DeepSeek Variant(`llm-strict`) | ✅ PASS | 页面变体(字段重排 + 干扰按钮)6 步全 `deepseek`,填对全部字段 |
-| Hosp2MESAgent DeepSeek Hero(`llm-strict`) | ✅ PASS | `MES-DEMO-003-20260823T011158Z`:31 步全 `deepseek`、`fallback=0`、`material_exists/bom_exists=true`、`production_order_status=COMPLETED`、`storage_status=STORED`、`4/4` subgoals |
-| Hosp2MESAgent DeepSeek Recovery Hero(`llm-strict`) | ✅ PASS | `MES-DEMO-RECOVERY-001`(见下文 Adaptive Recovery):BOM 故障注入 → state diff → 诊断 → 局部重规划 → DeepSeek GUI 修复 → 恢复通过,`fallback=0`、`REEXECUTED_COMPLETED_SUBGOALS=0` |
-| Agent S3 | adapter ready / runtime not yet evaluated | 真实 import/construct 已验证;真实 `predict()` 需要 LLM Key + UI-TARS grounding 端点(本环境缺失) |
-
-### Reproducible Evidence
+Full local artifacts are excluded from Git (each run produces dozens
+of screenshots). Curated, sanitized evidence is published here:
 
 - Long-Horizon Hero: [`examples/evidence/long_horizon_hero/`](examples/evidence/long_horizon_hero/)
+  (`MES-DEMO-003-20260823T011158Z` — 31 deepseek decisions, 0 fallback, 4/4 subgoals)
 - Adaptive Recovery Hero: [`examples/evidence/recovery_hero/`](examples/evidence/recovery_hero/)
+  (`MES-DEMO-RECOVERY-001-20260823T042516Z` — fault → state diff → MISSING_PREREQUISITE → local replan → 7 repair steps → 0 reexecuted)
 
 > Full artifacts are generated locally under `artifacts/runs/` and are
-> intentionally excluded from Git (each run produces dozens of screenshots).
-> The curated, sanitized public evidence above is exported from those real runs
-> via `scripts/export_evidence.py`.
+> intentionally excluded from Git. Re-export with
+> `python scripts/export_evidence.py hero|recovery <run_id>`.
 
-上下文审计见 [LONG_HORIZON_CONTEXT_AUDIT.md](LONG_HORIZON_CONTEXT_AUDIT.md)。
-
----
-
-## 📊 运行基准评测
-
-```bash
-cd <repo-root>
-PYTHONPATH=.:backend python benchmark/e2e_probe.py
-```
-
-最新验证结果:
-
-| 任务 | 模式 | success | 说明 |
-|------|------|---------|------|
-| MES-DEMO-001 | api | ✅ | 物料创建 |
-| MES-DEMO-002 | api | ✅ | BOM + 生产指令 |
-| MES-DEMO-003(Hero) | api | ✅ | 全流程 + 局部恢复(recovery=1) |
-| MES-DEMO-GUI-001 | browser | ✅ | 通过 Playwright GUI 创建物料 |
-| MES-DEMO-003(Hero) | browser | ✅ | 通过 GUI 完成 物料→BOM→指令→7阶段→入库,独立验证通过 |
-| MES-DEMO-RECOVERY-001 | browser | ✅ | 真实 DeepSeek Recovery Hero:BOM 故障 → 局部恢复 → 全流程 PASS |
-
-> Browser 模式下的完整 Hero 任务(MES-DEMO-003)已跑通,真实证据见 [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md) 与 `artifacts/runs/<run_id>/`。
-
----
-
-## 🔁 Adaptive Recovery(V1.3)
-
-V1.3 将 Recovery 从"针对预注入异常的补偿"升级为**基于业务状态差异的局部重规划**——不是重新执行完整任务,而是根据当前业务状态动态判断缺失、局部修复、再继续。
+## 📁 Repository Structure
 
 ```text
-Execution Failure
-      ↓
-State Diff
-      ↓
-Diagnosis
-      ↓
-Local Replan
-      ↓
-GUI Repair
-      ↓
-Independent Verification
-      ↓
-Resume
+hosp2mes/                    # agent framework
+├── agents/                  # Skill baseline + LLM policy + Agent S3 adapter
+├── state/                   # canonical business state + state diff
+├── recovery/                # diagnosis + dependency-aware local replanning
+├── executor/                # action schema + BrowserExecutor (Playwright)
+├── observation/             # ApiEnv (REST) + BrowserEnv (Chromium)
+├── planner/                 # dependency-aware subgoal planner
+├── memory/                  # structured progress memory
+├── verifier/                # evidence-gated completion
+├── evidence/                # per-run JSON evidence
+├── evaluation/              # end-to-end metrics
+├── trace/                   # live Agent Monitor trace
+└── llm.py                   # DeepSeek client
+
+backend/
+├── app/                     # Mock MES FastAPI (Vue targets these endpoints)
+└── requirements.txt
+
+frontend/                    # Vue 3 + Vite Mock MES (built into dist/)
+tests/                       # 54 pytest tests
+benchmark/
+├── tasks/                   # .yaml task definitions
+├── e2e_probe.py             # api benchmark
+└── results/                 # run reports
+
+examples/evidence/           # PUBLIC, sanitized evidence (committed)
+scripts/                     # run_*.py runners, export_evidence.py, build_demo_gif.py, build_architecture.py
+artifacts/                   # LOCAL ONLY (gitignored)
+.github/workflows/ci.yml     # CI: unit + api e2e + frontend build + browser e2e
 ```
 
-核心模块:
+## 📚 Documentation
 
-| 模块 | 职责 |
-|------|------|
-| `hosp2mes/state/` | 统一业务状态(`material/bom/production_order/stages`)+ 通用嵌套路径 `diff()` |
-| `hosp2mes/recovery/diagnosis.py` | 通用失败分类(`MISSING_PREREQUISITE`/`STATE_MISMATCH`/`PREMATURE_DONE`/…) |
-| `hosp2mes/recovery/repair_planner.py` | 依赖感知局部重规划:`preserve`/`reactivate`/`invalidate`/`resume_from` |
-| `hosp2mes/recovery/recovery.py` | RecoveryEngine:diff→诊断→重规划 + 重试预算(`max_recovery_attempts=3`) |
-| `hosp2mes/recovery/recovery_trace.py` | 每次恢复输出 `recovery-XXX.json` |
-| `benchmark/faults/` | 独立故障注入(测试 harness,Agent 决策逻辑完全无感知) |
+- [DEVELOPMENT_STATUS.md](DEVELOPMENT_STATUS.md) — living log of every
+  phase (Plan → Run → Test → Inspect → Fix → Retest → Document), with
+  honest pass/fail records.
+- [AUTONOMY_AUDIT.md](AUTONOMY_AUDIT.md) — guarantees there is no
+  task-specific control flow in the browser agent.
+- [LONG_HORIZON_CONTEXT_AUDIT.md](LONG_HORIZON_CONTEXT_AUDIT.md) — bounded
+  per-step context (no unbounded history accumulation).
+- [PORTFOLIO_AUDIT.md](PORTFOLIO_AUDIT.md) — 30-second HR / 3-minute
+  engineer / resume-claim audits.
 
-恢复验证表(真实结果):
+## ⚠️ Known Limitations
 
-| Run | Policy | Fault | Recovery | Final |
-|-----|--------|-------|----------|-------|
-| GUI-001 | DeepSeek strict | None | — | PASS |
-| Hero | DeepSeek strict | None | — | PASS |
-| Recovery Hero | DeepSeek strict | BOM 丢弃(`FAULT-BOM-001`) | Local Replan | PASS |
+- **Mock MES** — synthetic data only. No real hospital / factory
+  connection. Do not claim "production-ready industrial agent".
+- **Single environment** — Mock MES lives in a single FastAPI + SQLite
+  process. Multi-tenant / multi-site is out of scope.
+- **Real DeepSeek runs need your own key** — the repo does not commit
+  `.env`. Use `llm-strict` to ensure deterministic, auditable results.
+- **Agent S3 adapter** — `gui-agents` (Apache-2.0) is installed and the
+  adapter is constructed, but a real `predict()` requires a worker
+  LLM key **and** a UI-TARS grounding model endpoint (not evaluated).
+- **Recovery demo is state-diff local re-planning** in a single
+  fault-injection scenario, not a general-purpose self-healing agent.
 
-> State-diff-based local recovery demonstrated in synthetic MES fault scenarios.
+## 📄 License
 
----
-
-## 🧪 运行测试
-
-```bash
-cd <repo-root>
-# Windows:
-.venv\Scripts\python.exe -m pytest tests/ -q
-# macOS / Linux:
-# .venv/bin/python -m pytest tests/ -q
-```
-
-- 后端 CRUD 与业务逻辑
-- Agent Planner / Memory / Verifier / Recovery / Evaluator 单元测试
-- api 模式完整 E2E(临时后端 + Agent 完成 DEMO 任务)
-- **Browser 模式**:`test_browser_observation`、`test_browser_executor`、`test_gui_material_creation_e2e`、`test_gui_production_execution`(真实启动页面并通过 Playwright 操作,含 scoped semantic target 与重渲染后 locator 重新获取)
-- **Agent policy**:`test_agent_policy`(单步动作决策、页面变体自主性、Hosp2MESAgent 完成 GUI-001)、`test_agent_s3_adapter`(Agent S3 适配器的诚实可用性/映射)
-- **Adaptive recovery**:`test_recovery`(state diff、依赖感知局部重规划、重试预算、`subgoal_execution_counts` / `reexecuted_completed_subgoals`、recovery episode 边界)、`test_premature_done_metric`(premature-DONE 计数进入 Evaluator)
-
-当前共 **54 个测试**全部通过。
+MIT — see [LICENSE](LICENSE).
 
 ---
 
-## 🏗️ 技术栈
-
-| 层级 | 技术 |
-|------|------|
-| 前端 | Vue 3 + TypeScript + Vite + Element Plus + ECharts + Axios |
-| 后端 | Python + FastAPI + SQLAlchemy + SQLite + Pydantic |
-| Agent | 模块化 Skill + MockLLM/DeepSeek + ApiEnv(REST,确定性测试) + BrowserEnv(Playwright 真实 GUI) |
-| 评测 | pytest + 自定义 E2E Harness |
-
----
-
-## 📁 项目结构
-
-```
-Hosp2MES-Agent-Public/
-├── backend/              # FastAPI + SQLite Mock MES
-│   ├── app/
-│   │   ├── routers/      # REST API
-│   │   ├── services/     # 业务逻辑
-│   │   ├── models.py     # SQLAlchemy 模型
-│   │   ├── schemas.py    # Pydantic 模型
-│   │   ├── seed.py       # 演示数据
-│   │   └── main.py       # FastAPI 入口
-│   └── requirements.txt
-├── frontend/             # Vue 3 控制台
-│   └── src/
-│       ├── views/        # Dashboard / Materials / BOMs / Orders /
-│       │                 # Execution / Anomalies / AgentMonitor / Benchmark
-│       ├── api/          # Axios 封装
-│       └── router/       # Vue Router
-├── hosp2mes/             # Agent 框架
-│   ├── agent/
-│   │   ├── agent.py      # ApiEnv 模式编排
-│   │   └── browser_agent.py   # BrowserAgent = SemanticSkillAgent 别名
-│   ├── agents/           # 三种 browser 模式 Agent
-│   │   ├── skill_agent.py      # SemanticSkillAgent(Skill 基线)
-│   │   ├── hosp2mes_agent.py   # Hosp2MESAgent(单步 LLM action policy)
-│   │   └── agent_s3_adapter.py # Agent S3(官方 gui-agents)适配器
-│   ├── planner/
-│   ├── memory/
-│   ├── observation/
-│   │   ├── api_env.py           # REST 环境(确定性测试/CI)
-│   │   ├── browser_env.py       # Playwright 真实 GUI 环境
-│   │   ├── browser_observation.py  # 结构化浏览器观察
-│   │   └── dom_extractor.py     # DOM/可访问性语义提取
-│   ├── executor/
-│   │   ├── executor.py          # REST 动作层
-│   │   └── browser_executor.py  # GUI 动作层(语义定位)
-│   ├── evidence/         # artifacts/runs/<run_id> 逐步证据
-│   ├── verifier/
-│   ├── recovery/
-│   ├── trace/
-│   ├── evaluation/
-│   ├── run.py            # CLI(--env api|browser --headless ...)
-│   └── llm.py
-├── benchmark/            # 基准任务与评测脚本
-├── artifacts/runs/       # (运行生成)GUI 逐步证据与截图
-├── tests/                # pytest 测试
-├── docs/                 # 设计文档
-├── assets/screenshots/   # 演示截图
-└── README.md
-```
-
----
-
-## 📸 界面截图
-
-| 仪表盘 | BOM 管理 | Agent Monitor | Benchmark |
-|--------|----------|---------------|-----------|
-| ![](assets/screenshots/dashboard.png) | ![](assets/screenshots/boms.png) | ![](assets/screenshots/agent.png) | ![](assets/screenshots/benchmark.png) |
-
-### Browser GUI Demo (real Chromium)
-
-The Agent drives the real Vue Mock MES through Playwright. The page below is
-the same UI a human operator would see, served from the prebuilt `dist/`:
-
-![Browser GUI — Materials](assets/screenshots/browser_gui/materials.png)
-![Browser GUI — Execution](assets/screenshots/browser_gui/execution.png)
-
-Every browser run writes before/after screenshots + a structured evidence
-file to `artifacts/runs/<run_id>/`. See
-[`assets/screenshots/browser_gui/`](assets/screenshots/browser_gui/) and the
-`artifacts/runs/` directory after running the CLI.
-
----
-
-## 📚 文档
-
-- [架构设计](docs/architecture.md)
-- [Agent 设计](docs/agent_design.md)
-- [API 文档](docs/api.md)
-- [基准评测](docs/benchmark.md)
-- [开发指南](docs/development.md)
-- [自主性审计](AUTONOMY_AUDIT.md)
-- [PRD](docs/product/PRD.md)
-- [开发状态](DEVELOPMENT_STATUS.md)
-
----
-
-## 🔧 环境变量
-
-复制 `.env.example` 为 `.env`,按需填写:
-
-```bash
-cp .env.example .env
-```
-
-主要变量:
-
-| 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `DATABASE_URL` | SQLite 路径 | `sqlite:///./mes_demo.db` |
-| `AGENT_LLM_PROVIDER` | LLM 提供者(`mock` / `deepseek`) | `mock` |
-| `LLM_API_KEY` | DeepSeek 兼容 API Key | 空 |
-| `LLM_BASE_URL` | DeepSeek 兼容端点 | 空 |
-| `LLM_MODEL` | 模型名称 | `deepseek-chat` |
-| `BACKEND_BASE_URL` | Agent 访问后端的地址 | `http://localhost:8000` |
-| `FRONTEND_URL` | Vue Mock MES 前端地址(browser 模式) | `http://localhost:5173` |
-| `BROWSER_HEADLESS` | browser 模式是否无头运行(`1`/`0`) | `1` |
-
-> 公开演示默认使用 `mock` provider,无需填写 API Key。
-
----
-
-## ⚠️ 已知限制
-
-- `ApiEnv` 是**确定性测试 / CI 后端**,不代表真实 GUI 执行;真实 GUI 执行由 `BrowserEnv` 提供。
-- **Agent S3** 真实运行需要 `pip install gui-agents`(Python ≤3.12)+ LLM API Key + UI-TARS grounding 模型端点;本仓库只提供已接线的适配器,**不伪造**其成功结果。
-- 生产环境应使用 PostgreSQL 等服务器级数据库替换 SQLite。
-
----
-
-## 📄 许可证
-
-[MIT](LICENSE)
-
-第三方依赖声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
-
----
-
-## 🤝 贡献
-
-欢迎 Issue 与 PR。新增 Skill 或任务时,请同步更新 `tests/`、`benchmark/` 与 `docs/`。
+<sub>Built with the Mesop M-series (MiniMax M3). All data is synthetic.</sub>
