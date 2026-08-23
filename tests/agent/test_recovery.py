@@ -245,7 +245,8 @@ class _ScriptedPolicy(ActionPolicy):
                               rationale="scripted side-effect create")
 
 
-def test_recovery_loop_local_replan_e2e(tmp_path):
+def _run_recovery_e2e(tmp_path):
+    """Drive a full local-replan recovery run; return (agent, env, fault, report)."""
     task = Task(
         task_id="T-REC", instruction="full workflow", product="P",
         expected_final_state={"material_exists": True, "bom_exists": True,
@@ -259,7 +260,6 @@ def test_recovery_loop_local_replan_e2e(tmp_path):
     agent = Hosp2MESAgent(config, env, task)
     agent.policy = _ScriptedPolicy(config, agent.ctx, env)
 
-    # Harness fault: discard the BOM right after create_bom completes.
     from benchmark.faults.faults import FaultInjector, FaultSpec
 
     fault = FaultInjector(discard_fn=lambda target: env.boms.pop("B", None))
@@ -269,6 +269,11 @@ def test_recovery_loop_local_replan_e2e(tmp_path):
     agent.on_subgoal_completed.append(fault.on_subgoal_completed)
 
     report, trace, memory = agent.run()
+    return agent, env, fault, report
+
+
+def test_recovery_loop_local_replan_e2e(tmp_path):
+    agent, env, fault, report = _run_recovery_e2e(tmp_path)
 
     assert fault.triggered, "fault must have fired"
     assert report.task_success is True
@@ -280,7 +285,6 @@ def test_recovery_loop_local_replan_e2e(tmp_path):
     assert agent.recovery.reexecuted_completed_subgoals == 0
     assert agent.recovery.local_replan_count == 1
     assert agent.recovery.state_diff_count >= 1
-    assert agent.recovery.total_recovery_steps > 0
     # Material was created exactly once (preserved, never re-executed).
     assert list(env.materials.keys()) == ["M"]
     # The BOM was recreated after the fault (recovery re-executed create_bom).
@@ -289,3 +293,44 @@ def test_recovery_loop_local_replan_e2e(tmp_path):
     rec_dir = os.path.join(tmp_path, "runs", agent.run_id, "recovery")
     assert os.path.isdir(rec_dir)
     assert any(f.startswith("recovery-") for f in os.listdir(rec_dir))
+
+
+def test_subgoal_execution_counts_and_reexecuted(tmp_path):
+    """P0.3 Test 1: real execution counters, not a queue derivation."""
+    agent, env, fault, report = _run_recovery_e2e(tmp_path)
+
+    counts = agent.subgoal_execution_counts
+    assert counts["create_material"] == 1   # executed once, preserved, never re-run
+    assert counts["create_bom"] == 2        # re-executed once during repair
+    assert counts["create_production_order"] == 1
+    assert counts["execute_production"] == 1
+    # reexecuted_completed_subgoals == 0 despite create_bom being executed twice,
+    # because create_bom was never a *preserved* (state-verified) subgoal.
+    assert agent.recovery.reexecuted_completed_subgoals == 0
+    # The counter is persisted to the summary.
+    with open(os.path.join(tmp_path, "runs", agent.run_id, "summary.json"),
+              encoding="utf-8") as f:
+        import json
+        summary = json.load(f)
+    assert summary["subgoal_execution_counts"]["create_material"] == 1
+    assert summary["subgoal_execution_counts"]["create_bom"] == 2
+
+
+def test_recovery_steps_bound_to_repair_episode(tmp_path):
+    """P0.3 Test 2: TOTAL_RECOVERY_STEPS counts only the repair episode."""
+    agent, env, fault, report = _run_recovery_e2e(tmp_path)
+
+    trace = agent.recovery.traces[0]
+    # The repair episode ends before the final task step (order + execution
+    # are normal resumed execution, not recovery steps).
+    assert trace.repair_end_step > 0
+    assert trace.repair_start_step > 0
+    assert trace.repair_end_step < agent.gui_steps
+    assert trace.repair_verified is True
+    # TOTAL_RECOVERY_STEPS == the repair episode's step count (BOM re-creation),
+    # and it is strictly less than the total GUI steps.
+    assert trace.repair_step_count == len(trace.repair_steps)
+    assert agent.recovery.total_recovery_steps == trace.repair_step_count
+    assert agent.recovery.total_recovery_steps < agent.gui_steps
+    # Every repair step belongs to the repair (create_bom) subgoal.
+    assert all(s["subgoal"] == "create_bom" for s in trace.repair_steps)
