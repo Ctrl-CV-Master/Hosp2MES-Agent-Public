@@ -280,6 +280,7 @@ def test_recovery_loop_local_replan_e2e(tmp_path):
     assert agent.recovery.reexecuted_completed_subgoals == 0
     assert agent.recovery.local_replan_count == 1
     assert agent.recovery.state_diff_count >= 1
+    assert agent.recovery.total_recovery_steps > 0
     # Material was created exactly once (preserved, never re-executed).
     assert list(env.materials.keys()) == ["M"]
     # The BOM was recreated after the fault (recovery re-executed create_bom).

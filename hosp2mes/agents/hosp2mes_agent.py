@@ -513,6 +513,8 @@ class Hosp2MESAgent:
         self._last_recent: list[dict] = []
         self._episode_pending = False
         self._recovery_start_step = 0
+        self._consecutive_premature_done = 0
+        self._premature_done_budget = getattr(config, "premature_done_budget", 3) or 3
 
     # ---- lifecycle -------------------------------------------------------
     def run(self):
@@ -674,6 +676,7 @@ class Hosp2MESAgent:
     def _finalize_recovery_traces(self, verdict) -> None:
         """Fill repair_steps + verification_result and write recovery-XXX.json."""
         steps = self.evidence.steps
+        total_repair = 0
         for i, trace in enumerate(self.recovery.traces):
             start = trace.trigger_step
             # End of this episode = start of the next one, or the last step.
@@ -685,6 +688,7 @@ class Hosp2MESAgent:
                  "action_result": s.action_result, "policy_source": s.policy_source}
                 for s in steps if start < s.step <= end
             ]
+            total_repair += len(trace.repair_steps)
             trace.verification_result = {
                 "passed": verdict.passed,
                 "observed": verdict.observed,
@@ -694,6 +698,7 @@ class Hosp2MESAgent:
                 write_recovery_trace(self.evidence.run_dir, trace, i + 1)
             except Exception:
                 pass
+        self.recovery.total_recovery_steps = total_repair
 
     # ---- per-subgoal decision loop ---------------------------------------
     def _run_subgoal_loop(self, sg: Subgoal) -> bool:
@@ -701,6 +706,7 @@ class Hosp2MESAgent:
         recent: list[dict] = []
         sg_llm_calls = 0
         sg_steps = 0
+        self._consecutive_premature_done = 0
         for _ in range(max_steps):
             if self._subgoal_satisfied(sg):
                 self.memory.mark_completed(sg.id, evidence={"success_condition": sg.success_condition})
@@ -790,11 +796,19 @@ class Hosp2MESAgent:
                 recent = recent[-12:]
 
             if decision.action == "done":
-                # Policy claims done; the next loop iteration verifies via read-back.
+                # Policy claims done; the read-back must agree. A persistent
+                # disagreement (bounded) means the state is stuck and triggers
+                # recovery instead of looping forever.
                 if not self._subgoal_satisfied(sg):
                     self.premature_done_count += 1
+                    self._consecutive_premature_done += 1
                     self.failure_reason = "policy claimed done but read-back disagrees"
+                    if self._consecutive_premature_done >= self._premature_done_budget:
+                        break
                     continue
+                self._consecutive_premature_done = 0
+            else:
+                self._consecutive_premature_done = 0
 
         self.memory.mark_failed(sg.id, reason="exhausted decision-loop steps")
         self.failure_reason = self.failure_reason or f"exhausted {max_steps} steps"
